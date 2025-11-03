@@ -14,7 +14,15 @@ export enum Role {
   Patient = 'patient',
   Admin = 'admin',
 }
+// في ملف src/types.ts
 
+export interface User {
+  id: string; 
+  role: Role;
+  name?: string; // 🚨 إضافة هذا الحقل
+}
+
+// ...
 export interface User {
   id: string;
   role: Role;
