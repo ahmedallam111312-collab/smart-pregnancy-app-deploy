@@ -1,4 +1,3 @@
-
 export enum Page {
   Login,
   Home,
@@ -14,18 +13,12 @@ export enum Role {
   Patient = 'patient',
   Admin = 'admin',
 }
-// في ملف src/types.ts
 
+// 🚨 هذا هو التعريف الموحد والصحيح الذي يحتوي على الاسم
 export interface User {
   id: string; 
   role: Role;
-  name?: string; // 🚨 إضافة هذا الحقل
-}
-
-// ...
-export interface User {
-  id: string;
-  role: Role;
+  name?: string; // حقل الاسم (اختياري)
 }
 
 export interface PersonalInfo {
