@@ -1,52 +1,134 @@
-import React, { useState } from 'react';
+import React, { useState, FormEvent } from 'react';
 import { useUser } from '../hooks/useUser';
-import { Role } from '../types';
-import Button from '../components/Button';
-import Card from '../components/Card';
-import Input from '../components/Input';
+import { Page, Role } from '../types'; // 🚨 تأكد من استيراد Role
+import { createUserWithEmailAndPassword, signInWithEmailAndPassword } from 'firebase/auth';
+import { auth } from '../services/firebase'; // استيراد خدمة التوثيق
 
-const LoginPage: React.FC = () => {
+interface LoginPageProps {
+  navigate: (page: Page) => void;
+}
+
+const LoginPage: React.FC<LoginPageProps> = () => {
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [isRegistering, setIsRegistering] = useState(false);
+  const [error, setError] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
+
   const { login } = useUser();
-  const [username, setUsername] = useState('');
 
-  const handleLogin = (e: React.FormEvent) => {
+  const handleAuth = async (e: FormEvent) => {
     e.preventDefault();
-    if (!username.trim()) return;
+    setError('');
+    
+    // ----------------------------------------------------
+    // 🚨 1. شروط التحقق من صحة المدخلات (VALIDATION)
+    // ----------------------------------------------------
+    if (!email.trim() || !password.trim()) {
+        setError('يرجى ملء حقلي البريد الإلكتروني وكلمة المرور.');
+        return; // <--- يمنع الإرسال إذا كانت الحقول فارغة
+    }
+    
+    // Firebase تفرض 6 أحرف على الأقل
+    if (isRegistering && password.length < 6) { 
+        setError('يجب أن لا تقل كلمة المرور عن 6 أحرف عند التسجيل.');
+        return; // <--- يمنع الإرسال
+    }
+    // ----------------------------------------------------
 
-    if (username.trim().toLowerCase() === 'ahmed') {
-      login('ahmed', Role.Admin);
-    } else {
-      login(username.trim(), Role.Patient);
+    setIsLoading(true);
+
+    try {
+      if (isRegistering) {
+        // إنشاء حساب جديد
+        const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+        // نستخدم UID من Firebase والدور Patient
+        login(userCredential.user.uid, Role.Patient); 
+
+      } else {
+        // تسجيل الدخول
+        const userCredential = await signInWithEmailAndPassword(auth, email, password);
+        // نستخدم UID من Firebase والدور Patient
+        login(userCredential.user.uid, Role.Patient);
+      }
+    } catch (err: any) {
+      console.error("Firebase Auth Error:", err);
+      
+      // 🚨 2. معالجة أخطاء Firebase المحددة وعرضها بوضوح
+      if (err.code === 'auth/invalid-email') {
+          setError('صيغة البريد الإلكتروني غير صحيحة.');
+      } else if (err.code === 'auth/user-not-found' || err.code === 'auth/wrong-password') {
+          setError('البريد الإلكتروني أو كلمة المرور غير صحيحة.');
+      } else if (err.code === 'auth/email-already-in-use') {
+          setError('هذا البريد الإلكتروني مسجل بالفعل. يرجى تسجيل الدخول.');
+      } else {
+          // رسالة خطأ عامة
+          setError('حدث خطأ في الاتصال، يرجى المحاولة مرة أخرى.');
+      }
+
+    } finally {
+      setIsLoading(false);
     }
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-brand-pink-light p-4">
-      <Card className="w-full max-w-md text-center">
-        <div className="mx-auto mb-6">
-          <svg className="h-16 w-16 text-brand-pink mx-auto" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
-          </svg>
-        </div>
-        <h1 className="text-3xl font-bold text-brand-pink-dark mb-2">مرحباً بك في مساعد الحمل الذكي</h1>
-        <p className="text-brand-gray-dark mb-8">يرجى إدخال اسم المستخدم للمتابعة</p>
+    <div className="flex flex-col items-center justify-center min-h-screen p-4">
+      <div className="bg-white p-8 rounded-xl shadow-2xl w-full max-w-md border-t-4 border-brand-pink-dark">
+        <h2 className="text-3xl font-bold text-center text-brand-pink-dark mb-6">
+          {isRegistering ? 'إنشاء حساب جديد' : 'تسجيل الدخول'}
+        </h2>
         
-        <form onSubmit={handleLogin} className="space-y-6">
-          <Input
-            id="username"
-            label="اسم المستخدم"
-            type="text"
-            value={username}
-            onChange={(e) => setUsername(e.target.value)}
-            placeholder="أدخل اسم المستخدم"
-            required
-            autoFocus
-          />
-          <Button type="submit" className="w-full text-lg">
-            تسجيل الدخول
-          </Button>
+        {error && (
+          <p className="bg-red-100 text-red-700 p-3 rounded mb-4 text-sm border border-red-300">
+            {error}
+          </p>
+        )}
+
+        <form onSubmit={handleAuth} className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-brand-gray-dark mb-1">البريد الإلكتروني</label>
+            <input
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              required
+              className="w-full p-3 border border-brand-gray-light rounded-lg focus:ring-brand-pink focus:border-brand-pink"
+              placeholder="name@example.com"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-brand-gray-dark mb-1">كلمة المرور</label>
+            <input
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              required
+              // تمت إزالة minLength من الـ input لأننا نتحقق منها في JS (لزيادة التحكم)
+              className="w-full p-3 border border-brand-gray-light rounded-lg focus:ring-brand-pink focus:border-brand-pink"
+              placeholder="لا تقل عن 6 أحرف"
+            />
+          </div>
+
+          <button
+            type="submit"
+            disabled={isLoading} // 🚨 يمنع النقر المتكرر أثناء التحميل
+            className="w-full bg-brand-pink text-white py-3 rounded-lg font-semibold hover:bg-brand-pink-dark transition-colors disabled:bg-gray-400"
+          >
+            {isLoading ? 'جارِ التحميل...' : isRegistering ? 'إنشاء وتسجيل الدخول' : 'تسجيل الدخول'}
+          </button>
         </form>
-      </Card>
+
+        <p className="mt-6 text-center text-sm text-brand-gray">
+          {isRegistering ? 'لديك حساب بالفعل؟' : 'لا تملك حسابًا؟'}
+          <button
+            type="button"
+            onClick={() => setIsRegistering(!isRegistering)}
+            className="text-brand-pink font-medium hover:underline mr-1"
+          >
+            {isRegistering ? 'تسجيل الدخول' : 'انشئ حساب الآن'}
+          </button>
+        </p>
+      </div>
     </div>
   );
 };
