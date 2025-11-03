@@ -8,11 +8,25 @@ if (!API_KEY) {
   console.error("API_KEY environment variable not set.");
 }
 
-const ai = new GoogleGenAI({ apiKey: API_KEY! });
+// استخدام 'new GoogleGenAI' بدلاً من 'new GoogleGenAI()' إذا كانت لديك مشاكل في الإصدار
+const ai = new GoogleGenAI({ apiKey: API_KEY! }); 
+
+// ----------------------------------------------------
+// 🚨 واجهة التحاليل المخبرية (Schema)
+// ----------------------------------------------------
+const LabResultsSchema = {
+    type: Type.OBJECT,
+    properties: {
+        systolicBp: { type: Type.NUMBER, nullable: true, description: "Extracted Systolic Blood Pressure (optional)." },
+        diastolicBp: { type: Type.NUMBER, nullable: true, description: "Extracted Diastolic Blood Pressure (optional)." },
+        fastingGlucose: { type: Type.NUMBER, nullable: true, description: "Extracted Fasting Glucose (optional)." },
+        hb: { type: Type.NUMBER, nullable: true, description: "Extracted Hemoglobin (Hb) (optional)." },
+    },
+    // لا نضع أي حقل هنا في Required لأن كل التحاليل اختيارية
+};
 
 /**
  * Mocks an OCR service that extracts text from an image.
- * In a real application, this would involve a server-side process.
  */
 export const mockOcrService = async (file: File): Promise<string> => {
   console.log(`Simulating OCR for file: ${file.name}`);
@@ -68,12 +82,7 @@ export const analyzePatientData = async (
       "urgency": "string", // "High", "Medium", "Low", "Normal"
       "brief_summary": "string", // A one-sentence summary in Arabic.
       "detailed_report": "string", // A detailed, multi-paragraph report in Arabic. The report MUST be comprehensive, at least two paragraphs long, and include recommendations. Use markdown for formatting: use '##' for headings, '*' for list items, and separate paragraphs with a double newline.
-      "extracted_labs": { // Extract and normalize lab values from all inputs. If a value is not present, omit the key.
-        "systolicBp": number,
-        "diastolicBp": number,
-        "fastingGlucose": number,
-        "hb": number
-      }
+      "extracted_labs": { /* Lab results matching the schema below */ }
     }
   `;
 
@@ -89,15 +98,7 @@ export const analyzePatientData = async (
             urgency: { type: Type.STRING, description: "Urgency level: High, Medium, Low, or Normal" },
             brief_summary: { type: Type.STRING, description: "One-sentence summary in Arabic." },
             detailed_report: { type: Type.STRING, description: "Detailed report in Arabic with markdown. Use '##' for headings and '*' for list items." },
-            extracted_labs: {
-              type: Type.OBJECT,
-              properties: {
-                systolicBp: { type: Type.NUMBER, nullable: true },
-                diastolicBp: { type: Type.NUMBER, nullable: true },
-                fastingGlucose: { type: Type.NUMBER, nullable: true },
-                hb: { type: Type.NUMBER, nullable: true },
-              },
-            },
+            extracted_labs: LabResultsSchema, // 🚨 استخدام الـ Schema المنفصل للتحاليل
           },
           required: ["urgency", "brief_summary", "detailed_report", "extracted_labs"],
         },
@@ -115,27 +116,23 @@ export const analyzePatientData = async (
     
     const result = JSON.parse(jsonText);
 
-    // **Stricter Validation:** Check for a meaningful, non-placeholder report.
+    // Stricter Validation: Check for a meaningful report.
     if (
         !result || typeof result !== 'object' || 
         !result.urgency || 
         !result.brief_summary || 
         !result.detailed_report || result.detailed_report.trim().length < 50
     ) {
-        console.error("Invalid or incomplete AI response structure:", result);
-        throw new Error("فشل الذكاء الاصطناعي في توليد تقرير متكامل. قد تكون البيانات المدخلة غير كافية أو غير واضحة. يرجى مراجعة المدخلات والمحاولة مرة أخرى.");
+        console.error("Invalid or incomplete AI response structure (Post-parse check):", result);
+        throw new Error("فشل الذكاء الاصطناعي في توليد تقرير متكامل. يرجى مراجعة المدخلات والمحاولة مرة أخرى.");
     }
 
-    return result;
+    return result as AIResponse;
 
   } catch (error) {
     console.error("Error analyzing patient data:", error);
-    if (error instanceof Error && error.message.includes('JSON')) {
-        throw new Error("فشل في تحليل استجابة الذكاء الاصطناعي. يرجى المحاولة مرة أخرى.");
-    }
-     // Re-throw custom error messages from the validation step
-    if (error instanceof Error && error.message.startsWith("فشل الذكاء الاصطناعي")) {
-        throw error;
+    if (error instanceof Error && error.message.includes('JSON') || String(error).includes('API key not valid')) {
+        throw new Error("فشل في تحليل استجابة الذكاء الاصطناعي. قد يكون المفتاح غير صحيح أو حدث خطأ في البنية.");
     }
     throw new Error("حدث خطأ غير متوقع أثناء تحليل البيانات. يرجى المحاولة مرة أخرى.");
   }
