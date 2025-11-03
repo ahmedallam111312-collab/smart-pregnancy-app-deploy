@@ -1,25 +1,22 @@
-import React, { useState, useEffect } from 'react'; // <--- إضافة useEffect و useState
+import React, { useState, useEffect } from 'react';
 import { Page, Role, PatientRecord } from '../types';
 import Button from '../components/Button';
 import Card from '../components/Card';
 import { useUser } from '../hooks/useUser';
-// تم حذف: import { patientRecordsDB } from '../services/mockDB'; // <--- حذف الاستيراد القديم
-import { getPatientRecordsByUserId } from '../services/mockDB'; // <--- استيراد دالة جلب البيانات
-import LoadingSpinner from '../components/LoadingSpinner'; // <--- لاستخدام شاشة التحميل
+import { getPatientRecordsByUserId } from '../services/mockDB'; 
+import LoadingSpinner from '../components/LoadingSpinner';
 
 const HomePage: React.FC<{ navigate: (page: Page) => void }> = ({ navigate }) => {
     const { user } = useUser();
-    const [latestRecord, setLatestRecord] = useState<PatientRecord | undefined>(undefined); // <--- حالة لحفظ آخر سجل
-    const [isLoading, setIsLoading] = useState(true); // <--- حالة للتحميل
+    const [latestRecord, setLatestRecord] = useState<PatientRecord | undefined>(undefined);
+    const [isLoading, setIsLoading] = useState(true);
 
     // دالة جلب آخر سجل للمستخدم
     const fetchLatestRecord = async () => {
         if (user?.id && user.role === Role.Patient) {
             setIsLoading(true);
             try {
-                // جلب كل السجلات، والدالة تعيدها مرتبة حسب التاريخ تنازلياً (الأحدث أولاً)
                 const records = await getPatientRecordsByUserId(user.id);
-                // آخر سجل هو العنصر الأول في المصفوفة
                 setLatestRecord(records[0]); 
             } catch (error) {
                 console.error("Error fetching latest record:", error);
@@ -32,11 +29,15 @@ const HomePage: React.FC<{ navigate: (page: Page) => void }> = ({ navigate }) =>
         }
     };
 
-    // useEffect لجلب البيانات عند تحميل الصفحة أو تسجيل الدخول
     useEffect(() => {
         fetchLatestRecord();
-    }, [user?.id]); // يُعاد التنفيذ عند تغيير معرف المستخدم
+    }, [user?.id]); 
 
+    // -----------------------------------------------------------------
+    // 🚨 التعديل الحاسم: الاعتماد على الاسم من Context أولاً، ثم UID
+    // -----------------------------------------------------------------
+    const welcomeName = user?.name || latestRecord?.personalInfo.name || user?.id;
+    // -----------------------------------------------------------------
     
     const tools = [
         { name: "التقييم الشامل", page: Page.Assessment, icon: "📝" },
@@ -50,8 +51,6 @@ const HomePage: React.FC<{ navigate: (page: Page) => void }> = ({ navigate }) =>
         tools.push({ name: "لوحة تحكم المسؤول", page: Page.AdminDashboard, icon: "👑" });
     }
 
-    const welcomeName = latestRecord?.personalInfo.name || user?.id;
-    
     if (isLoading) {
         return (
             <div className="pt-20">
@@ -64,6 +63,7 @@ const HomePage: React.FC<{ navigate: (page: Page) => void }> = ({ navigate }) =>
     return (
         <div className="space-y-8">
             <div className="text-center">
+                {/* 🚨 عرض الاسم المحفوظ أو الـ UID إذا لم يتم إدخال الاسم */}
                 <h1 className="text-4xl font-bold text-brand-pink-dark">أهلاً بكِ، {welcomeName}!</h1>
                 <p className="text-lg text-brand-gray-dark mt-2">نحن هنا لدعمك في كل خطوة من رحلتكِ</p>
             </div>
