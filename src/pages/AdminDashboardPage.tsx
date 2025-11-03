@@ -1,27 +1,18 @@
-import React, { useState, useMemo, useEffect, useCallback } from 'react'; // <--- تم إضافة useEffect, useCallback
+import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { Page, PatientRecord, Role } from '../types';
 import BackButton from '../components/BackButton';
 import Card from '../components/Card';
 import { useUser } from '../hooks/useUser';
 import Input from '../components/Input';
-// تم حذف: import { patientRecordsDB } from '../services/mockDB';
-// تم حذف: import { deletePatientRecord } from '../services/mockDB';
-import { deletePatientRecord, getPatientRecordsByUserId } from '../services/mockDB'; // <--- استخدام دوال Firestore الجديدة
+// 🚨 الإضافات الصحيحة: نستخدم دالة جلب كل شيء للمدير
+import { deletePatientRecord, getAllPatientRecordsForAdmin } from '../services/mockDB'; 
 import TrashIcon from '../components/icons/TrashIcon';
 import ChevronDownIcon from '../components/icons/ChevronDownIcon';
 import DownloadIcon from '../components/icons/DownloadIcon';
 import Modal from '../components/Modal';
 import LoadingSpinner from '../components/LoadingSpinner'; // <--- إضافة لاستخدام شاشة التحميل
 
-// وظيفة جلب جميع سجلات المرضى (مخصصة للمسؤول فقط)
-// يتم عمل هذه الدالة هنا في حالة كان الكود القديم يعتمد عليها
-const getAllPatientRecords = async (): Promise<PatientRecord[]> => {
-    // ⚠️ يتم هنا استخدام دالة استرجاع سجلات مستخدم واحد مع userId وهمي
-    // الحل الأفضل: كتابة دالة في services تجلب كل السجلات دون قيود userId
-    // لكن مؤقتاً، سنستخدمها كدالة وهمية للمسؤول
-    return []; // يجب تعديل هذه الدالة في ملف services لكي تعمل
-};
-
+// ⚠️ تم حذف الدالة الوهمية getAllPatientRecords من هنا
 
 const symptomTranslations: { [key: string]: string } = {
   'None': 'لا يوجد',
@@ -33,31 +24,21 @@ const symptomTranslations: { [key: string]: string } = {
 
 const AdminDashboardPage: React.FC<{ navigate: (page: Page) => void }> = ({ navigate }) => {
   const { user } = useUser();
-  const [records, setRecords] = useState<PatientRecord[]>([]); // <--- يتم تحميلها من Firestore
+  const [records, setRecords] = useState<PatientRecord[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [filterUrgency, setFilterUrgency] = useState('All');
   const [expandedRecordId, setExpandedRecordId] = useState<string | null>(null);
   const [recordToDelete, setRecordToDelete] = useState<PatientRecord | null>(null);
-  const [isLoading, setIsLoading] = useState(true); // <--- حالة التحميل
+  const [isLoading, setIsLoading] = useState(true);
 
-  // 1. تحميل البيانات من Firestore
+  // 1. تحميل البيانات من Firestore باستخدام الدالة الجديدة
   const fetchAllRecords = useCallback(async () => {
     if (user?.role === Role.Admin) {
         setIsLoading(true);
         try {
-            // ⚠️ ملاحظة هامة: يجب أن تكون دالة getPatientRecordsByUserId في mockDB.ts
-            // معدلة لتجلب كل السجلات إذا كان user.role هو Admin. 
-            // لكن لغرض التشغيل السريع، سنجلبها من الدالة التي تجلب كل السجلات.
-            
-            // بما أن الكود الأصلي لم يكن يحتوي على دالة تجلب كل السجلات، 
-            // سنفترض أننا يجب أن نكتب دالة جديدة تجلب كل شيء (سنستخدم getAllPatientRecords الوهمية)
-            // ولأننا لم نكتبها بعد، سنقوم بتعديل الدالة للحظات (في الكود الواقعي يجب أن تعدل getAllPatientRecords في services)
-            
-            // مؤقتاً، سنقوم بملء البيانات يدوياً (هذا الجزء يتطلب تعديل في ملف services في المشروع الحقيقي)
-            // لغرض عرض واجهة المسؤول:
-            const allRecords = await getAllPatientRecords(); 
+            // 🚨 استدعاء الدالة الصحيحة التي تجلب كل السجلات من Firestore
+            const allRecords = await getAllPatientRecordsForAdmin(); 
             setRecords(allRecords);
-            
         } catch (error) {
             console.error("Error fetching admin records:", error);
         } finally {
@@ -68,10 +49,6 @@ const AdminDashboardPage: React.FC<{ navigate: (page: Page) => void }> = ({ navi
   
   useEffect(() => {
     if(user?.role === Role.Admin) {
-        // بما أن AdminDashboard يعرض كل السجلات، نحتاج دالة تجلب كل شيء، 
-        // ولأننا لم ننشئها، سنقوم بتعديل بسيط هنا
-        // في مشروع حقيقي: يجب تعديل getAllPatientRecords في services.
-        // بما أنني لا أستطيع تعديل ملف services، سأفترض أنها تجلب كل شيء.
         fetchAllRecords();
     } else {
         setIsLoading(false);
@@ -102,17 +79,17 @@ const AdminDashboardPage: React.FC<{ navigate: (page: Page) => void }> = ({ navi
     setRecordToDelete(record);
   };
 
-  const confirmDelete = async () => { // <--- تم جعلها غير متزامنة
+  const confirmDelete = async () => {
     if (recordToDelete) {
         try {
-            // 2. استخدام دالة Firestore للحذف
             const success = await deletePatientRecord(recordToDelete.id); 
             
             if (success) {
-                // إعادة تحميل البيانات بعد الحذف لضمان التحديث
+                // إعادة تحميل البيانات بعد الحذف
                 await fetchAllRecords(); 
             } else {
-                alert("فشل في حذف السجل من قاعدة البيانات.");
+                // استخدام modal أو رسالة مخصصة بدلاً من alert()
+                console.error("Failed to delete record from Firestore."); 
             }
         } catch (error) {
             console.error("Failed to delete record:", error);
@@ -128,7 +105,6 @@ const AdminDashboardPage: React.FC<{ navigate: (page: Page) => void }> = ({ navi
   };
   
   const downloadCSV = () => {
-    // ... (كود تصدير CSV يبقى كما هو)
     const headers = [
       "ID", "UserID", "Timestamp", "Name", "Age",
       "G", "P", "A", "Height", "Pre-Pregnancy Weight", "Current Weight",
