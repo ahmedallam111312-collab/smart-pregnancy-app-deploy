@@ -1,8 +1,10 @@
 import React, { useState, FormEvent } from 'react';
 import { useUser } from '../hooks/useUser';
-import { Page, Role } from '../types'; // 🚨 تأكد من استيراد Role
+import { Page, Role } from '../types';
 import { createUserWithEmailAndPassword, signInWithEmailAndPassword } from 'firebase/auth';
-import { auth } from '../services/firebase'; // استيراد خدمة التوثيق
+// 🚨 الإضافات الجديدة من Firestore
+import { db, auth } from '../services/firebase'; // تأكد أن db مُصدر أيضاً
+import { doc, setDoc, getDoc } from 'firebase/firestore'; 
 
 interface LoginPageProps {
   navigate: (page: Page) => void;
@@ -11,11 +13,32 @@ interface LoginPageProps {
 const LoginPage: React.FC<LoginPageProps> = () => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [name, setName] = useState(''); // 🚨 الحالة الجديدة للاسم
   const [isRegistering, setIsRegistering] = useState(false);
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
 
   const { login } = useUser();
+
+  // 🚨 دالة مساعدة لجلب البيانات والدور من Firestore
+  const fetchUserDataAndLogin = async (userId: string) => {
+    const userDocRef = doc(db, "users", userId);
+    const userDoc = await getDoc(userDocRef);
+
+    let userName: string | undefined = undefined;
+    let userRole: Role = Role.Patient; // القيمة الافتراضية
+
+    if (userDoc.exists()) {
+        const data = userDoc.data();
+        userName = data.name;
+        userRole = data.role as Role; // نستخدم الدور المخزن في Firestore
+    }
+
+    // 🚨 تمرير الاسم والدور المسترجع إلى دالة login
+    // يجب تعديل دالة login لاستقبال الاسم
+    login(userId, userRole, userName); 
+  }
+
 
   const handleAuth = async (e: FormEvent) => {
     e.preventDefault();
@@ -26,13 +49,18 @@ const LoginPage: React.FC<LoginPageProps> = () => {
     // ----------------------------------------------------
     if (!email.trim() || !password.trim()) {
         setError('يرجى ملء حقلي البريد الإلكتروني وكلمة المرور.');
-        return; // <--- يمنع الإرسال إذا كانت الحقول فارغة
+        return; 
     }
     
-    // Firebase تفرض 6 أحرف على الأقل
-    if (isRegistering && password.length < 6) { 
-        setError('يجب أن لا تقل كلمة المرور عن 6 أحرف عند التسجيل.');
-        return; // <--- يمنع الإرسال
+    if (isRegistering) {
+        if (!name.trim()) { // 🚨 التحقق من الاسم
+            setError('يرجى إدخال الاسم الكامل.');
+            return;
+        }
+        if (password.length < 6) { 
+            setError('يجب أن لا تقل كلمة المرور عن 6 أحرف عند التسجيل.');
+            return; 
+        }
     }
     // ----------------------------------------------------
 
@@ -40,21 +68,31 @@ const LoginPage: React.FC<LoginPageProps> = () => {
 
     try {
       if (isRegistering) {
-        // إنشاء حساب جديد
+        // 1. إنشاء حساب Firebase Authentication
         const userCredential = await createUserWithEmailAndPassword(auth, email, password);
-        // نستخدم UID من Firebase والدور Patient
-        login(userCredential.user.uid, Role.Patient); 
+        const userId = userCredential.user.uid;
+        
+        // 🚨 2. الخطوة الجديدة: حفظ الاسم والدور في Firestore
+        await setDoc(doc(db, "users", userId), {
+            name: name,
+            role: Role.Patient.toLowerCase(), 
+        });
+
+        // 3. تسجيل الدخول في التطبيق (باستخدام البيانات المسترجعة)
+        await fetchUserDataAndLogin(userId);
 
       } else {
-        // تسجيل الدخول
+        // تسجيل الدخول العادي
         const userCredential = await signInWithEmailAndPassword(auth, email, password);
-        // نستخدم UID من Firebase والدور Patient
-        login(userCredential.user.uid, Role.Patient);
+        const userId = userCredential.user.uid;
+        
+        // استرجاع الاسم والدور من Firestore ثم تسجيل الدخول
+        await fetchUserDataAndLogin(userId);
       }
     } catch (err: any) {
       console.error("Firebase Auth Error:", err);
       
-      // 🚨 2. معالجة أخطاء Firebase المحددة وعرضها بوضوح
+      // 🚨 3. معالجة أخطاء Firebase المحددة وعرضها بوضوح
       if (err.code === 'auth/invalid-email') {
           setError('صيغة البريد الإلكتروني غير صحيحة.');
       } else if (err.code === 'auth/user-not-found' || err.code === 'auth/wrong-password') {
@@ -62,7 +100,6 @@ const LoginPage: React.FC<LoginPageProps> = () => {
       } else if (err.code === 'auth/email-already-in-use') {
           setError('هذا البريد الإلكتروني مسجل بالفعل. يرجى تسجيل الدخول.');
       } else {
-          // رسالة خطأ عامة
           setError('حدث خطأ في الاتصال، يرجى المحاولة مرة أخرى.');
       }
 
@@ -85,37 +122,54 @@ const LoginPage: React.FC<LoginPageProps> = () => {
         )}
 
         <form onSubmit={handleAuth} className="space-y-4">
-          <div>
-            <label className="block text-sm font-medium text-brand-gray-dark mb-1">البريد الإلكتروني</label>
-            <input
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              required
-              className="w-full p-3 border border-brand-gray-light rounded-lg focus:ring-brand-pink focus:border-brand-pink"
-              placeholder="name@example.com"
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-brand-gray-dark mb-1">كلمة المرور</label>
-            <input
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              required
-              // تمت إزالة minLength من الـ input لأننا نتحقق منها في JS (لزيادة التحكم)
-              className="w-full p-3 border border-brand-gray-light rounded-lg focus:ring-brand-pink focus:border-brand-pink"
-              placeholder="لا تقل عن 6 أحرف"
-            />
-          </div>
+            
+            {/* 🚨 حقل الاسم يظهر فقط عند التسجيل */}
+            {isRegistering && (
+                <div>
+                    <label className="block text-sm font-medium text-brand-gray-dark mb-1">الاسم الكامل</label>
+                    <input
+                        type="text"
+                        value={name}
+                        onChange={(e) => setName(e.target.value)}
+                        required
+                        className="w-full p-3 border border-brand-gray-light rounded-lg focus:ring-brand-pink focus:border-brand-pink"
+                        placeholder="مثلاً: سارة أحمد"
+                    />
+                </div>
+            )}
 
-          <button
-            type="submit"
-            disabled={isLoading} // 🚨 يمنع النقر المتكرر أثناء التحميل
-            className="w-full bg-brand-pink text-white py-3 rounded-lg font-semibold hover:bg-brand-pink-dark transition-colors disabled:bg-gray-400"
-          >
-            {isLoading ? 'جارِ التحميل...' : isRegistering ? 'إنشاء وتسجيل الدخول' : 'تسجيل الدخول'}
-          </button>
+            {/* حقل البريد الإلكتروني */}
+            <div>
+              <label className="block text-sm font-medium text-brand-gray-dark mb-1">البريد الإلكتروني</label>
+              <input
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                required
+                className="w-full p-3 border border-brand-gray-light rounded-lg focus:ring-brand-pink focus:border-brand-pink"
+                placeholder="name@example.com"
+              />
+            </div>
+            {/* حقل كلمة المرور */}
+            <div>
+              <label className="block text-sm font-medium text-brand-gray-dark mb-1">كلمة المرور</label>
+              <input
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                required
+                className="w-full p-3 border border-brand-gray-light rounded-lg focus:ring-brand-pink focus:border-brand-pink"
+                placeholder="لا تقل عن 6 أحرف"
+              />
+            </div>
+
+            <button
+              type="submit"
+              disabled={isLoading}
+              className="w-full bg-brand-pink text-white py-3 rounded-lg font-semibold hover:bg-brand-pink-dark transition-colors disabled:bg-gray-400"
+            >
+              {isLoading ? 'جارِ التحميل...' : isRegistering ? 'إنشاء وتسجيل الدخول' : 'تسجيل الدخول'}
+            </button>
         </form>
 
         <p className="mt-6 text-center text-sm text-brand-gray">
