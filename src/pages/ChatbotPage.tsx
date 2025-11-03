@@ -5,7 +5,7 @@ import Button from '../components/Button';
 import Card from '../components/Card';
 import { getChatResponse } from '../services/geminiService';
 import { useUser } from '../hooks/useUser';
-import { patientRecordsDB } from '../services/mockDB';
+//import { patientRecordsDB } from '../services/mockDB';
 
 interface Message {
   text: string;

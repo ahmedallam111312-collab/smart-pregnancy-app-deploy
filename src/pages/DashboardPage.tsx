@@ -1,19 +1,47 @@
-import React from 'react';
-import { Page } from '../types';
+import React, { useState, useEffect, useCallback } from 'react'; // <--- تم إضافة useState, useEffect, useCallback
+import { Page, PatientRecord } from '../types';
 import BackButton from '../components/BackButton';
 import Card from '../components/Card';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import { useUser } from '../hooks/useUser';
-import { patientRecordsDB } from '../services/mockDB';
+// تم حذف: import { patientRecordsDB } from '../services/mockDB';
+// السطر القديم الذي يسبب الإيرور
+// import { getPatientRecordsByUserId } from "../services/patientRecordService"; 
 
+// ⬇️ الكود الصحيح: الاستيراد من mockDB
+import { getPatientRecordsByUserId } from "../services/mockDB";import LoadingSpinner from '../components/LoadingSpinner'; // <--- نحتاج هذه المكتبة لعرض شاشة تحميل
 
 const DashboardPage: React.FC<{ navigate: (page: Page) => void }> = ({ navigate }) => {
   const { user } = useUser();
-  
-  const userRecords = patientRecordsDB
-    .filter(record => record.userId === user?.id)
-    .sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime());
+  const [userRecords, setUserRecords] = useState<PatientRecord[]>([]); // <--- لحفظ البيانات المُحمّلة
+  const [isLoading, setIsLoading] = useState(true); // <--- حالة التحميل
 
+  // 1. جلب البيانات من Firestore عند تسجيل الدخول
+  const fetchRecords = useCallback(async () => {
+    if (user?.id) {
+      setIsLoading(true);
+      try {
+        // استدعاء دالة جلب البيانات من Firestore
+        const records = await getPatientRecordsByUserId(user.id);
+        setUserRecords(records); // تحديث الـ state بالبيانات الجديدة
+      } catch (error) {
+        console.error("Failed to fetch user records:", error);
+      } finally {
+        setIsLoading(false);
+      }
+    } else {
+      setIsLoading(false);
+      setUserRecords([]);
+    }
+  }, [user?.id]); // يُعاد التنفيذ فقط عند تغيير معرف المستخدم
+
+  useEffect(() => {
+    fetchRecords();
+  }, [fetchRecords]);
+
+
+  // 2. معالجة وتنسيق البيانات للعرض في الرسوم البيانية
+  // يتم عمل sort في دالة Firestore، لكن نستخدم map هنا
   const formattedData = userRecords.map(record => ({
     date: record.timestamp.toLocaleDateString('ar-EG', { month: 'short', day: 'numeric' }),
     weight: record.measurementData.currentWeight,
@@ -23,6 +51,16 @@ const DashboardPage: React.FC<{ navigate: (page: Page) => void }> = ({ navigate 
     hb: record.labResults.hb,
   }));
   
+  // 3. عرض شاشة التحميل
+  if (isLoading) {
+    return (
+        <div className="pt-10">
+            <LoadingSpinner message="جارِ تحميل سجل المتابعة الصحية..." />
+        </div>
+    );
+  }
+
+  // 4. عرض رسالة "لا توجد بيانات"
   if (userRecords.length === 0) {
       return (
           <div>
@@ -38,6 +76,7 @@ const DashboardPage: React.FC<{ navigate: (page: Page) => void }> = ({ navigate 
       )
   }
 
+  // 5. عرض الرسوم البيانية
   return (
     <div>
       <BackButton navigate={navigate} />

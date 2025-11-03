@@ -1,13 +1,43 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react'; // <--- إضافة useEffect و useState
 import { Page, Role, PatientRecord } from '../types';
 import Button from '../components/Button';
 import Card from '../components/Card';
 import { useUser } from '../hooks/useUser';
-import { patientRecordsDB } from '../services/mockDB';
+// تم حذف: import { patientRecordsDB } from '../services/mockDB'; // <--- حذف الاستيراد القديم
+import { getPatientRecordsByUserId } from '../services/mockDB'; // <--- استيراد دالة جلب البيانات
+import LoadingSpinner from '../components/LoadingSpinner'; // <--- لاستخدام شاشة التحميل
 
 const HomePage: React.FC<{ navigate: (page: Page) => void }> = ({ navigate }) => {
     const { user } = useUser();
+    const [latestRecord, setLatestRecord] = useState<PatientRecord | undefined>(undefined); // <--- حالة لحفظ آخر سجل
+    const [isLoading, setIsLoading] = useState(true); // <--- حالة للتحميل
 
+    // دالة جلب آخر سجل للمستخدم
+    const fetchLatestRecord = async () => {
+        if (user?.id && user.role === Role.Patient) {
+            setIsLoading(true);
+            try {
+                // جلب كل السجلات، والدالة تعيدها مرتبة حسب التاريخ تنازلياً (الأحدث أولاً)
+                const records = await getPatientRecordsByUserId(user.id);
+                // آخر سجل هو العنصر الأول في المصفوفة
+                setLatestRecord(records[0]); 
+            } catch (error) {
+                console.error("Error fetching latest record:", error);
+                setLatestRecord(undefined);
+            } finally {
+                setIsLoading(false);
+            }
+        } else {
+            setIsLoading(false);
+        }
+    };
+
+    // useEffect لجلب البيانات عند تحميل الصفحة أو تسجيل الدخول
+    useEffect(() => {
+        fetchLatestRecord();
+    }, [user?.id]); // يُعاد التنفيذ عند تغيير معرف المستخدم
+
+    
     const tools = [
         { name: "التقييم الشامل", page: Page.Assessment, icon: "📝" },
         { name: "المساعد الذكي (شات)", page: Page.Chatbot, icon: "💬" },
@@ -20,13 +50,16 @@ const HomePage: React.FC<{ navigate: (page: Page) => void }> = ({ navigate }) =>
         tools.push({ name: "لوحة تحكم المسؤول", page: Page.AdminDashboard, icon: "👑" });
     }
 
-    const latestRecord: PatientRecord | undefined = user?.role === Role.Patient 
-        ? patientRecordsDB
-            .filter(r => r.userId === user.id)
-            .sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime())[0]
-        : undefined;
-    
     const welcomeName = latestRecord?.personalInfo.name || user?.id;
+    
+    if (isLoading) {
+        return (
+            <div className="pt-20">
+                <LoadingSpinner message="جارِ تحميل بياناتك..." />
+            </div>
+        );
+    }
+
 
     return (
         <div className="space-y-8">
@@ -43,7 +76,7 @@ const HomePage: React.FC<{ navigate: (page: Page) => void }> = ({ navigate }) =>
                            <p className="text-lg mt-2">{latestRecord.aiResponse.brief_summary}</p>
                         </div>
                         <div className="flex items-center gap-4">
-                           <div className="text-center">
+                            <div className="text-center">
                                 <p className="font-semibold">مستوى الأهمية</p>
                                 <span className={`px-3 py-1 rounded-full text-md font-semibold ${
                                     latestRecord.aiResponse.urgency === 'High' ? 'bg-red-200 text-red-800' :
@@ -52,8 +85,8 @@ const HomePage: React.FC<{ navigate: (page: Page) => void }> = ({ navigate }) =>
                                 }`}>
                                     {latestRecord.aiResponse.urgency === 'High' ? 'عالي' : latestRecord.aiResponse.urgency === 'Medium' ? 'متوسط' : latestRecord.aiResponse.urgency === 'Low' ? 'منخفض' : 'طبيعي'}
                                 </span>
-                           </div>
-                           <Button onClick={() => navigate(Page.Dashboard)}>عرض التفاصيل</Button>
+                            </div>
+                            <Button onClick={() => navigate(Page.Dashboard)}>عرض التفاصيل</Button>
                         </div>
                     </div>
                 </Card>

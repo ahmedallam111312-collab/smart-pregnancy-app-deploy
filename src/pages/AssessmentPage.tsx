@@ -8,8 +8,12 @@ import StepIndicator from '../components/StepIndicator';
 import { analyzePatientData, mockOcrService } from '../services/geminiService';
 import { useUser } from '../hooks/useUser';
 import LoadingSpinner from '../components/LoadingSpinner';
-import { patientRecordsDB } from '../services/mockDB';
+// تم حذف: import { patientRecordsDB } from '../services/mockDB';
+// الكود القديم
+// import { saveNewPatientRecord } from '../services/patientRecordService';
 
+// الكود الصحيح
+import { saveNewPatientRecord } from '../services/mockDB';
 const ReportRenderer: React.FC<{ markdown: string }> = ({ markdown }) => {
     return (
         <div className="space-y-3 text-right">
@@ -35,11 +39,11 @@ const AssessmentPage: React.FC<{ navigate: (page: Page) => void }> = ({ navigate
   const { user } = useUser();
   const [step, setStep] = useState(1);
   const [formData, setFormData] = useState({
-    personalInfo: { name: '', age: 0 },
-    pregnancyHistory: { g: 0, p: 0, a: 0 },
-    measurementData: { height: 0, prePregnancyWeight: 0, currentWeight: 0 },
-    symptoms: { nausea: 'None' as SymptomLevel, vomiting: 'None' as SymptomLevel, other: ''},
-    labResults: {},
+    personalInfo: { name: '', age: 0 } as PersonalInfo,
+    pregnancyHistory: { g: 0, p: 0, a: 0 } as PregnancyHistory,
+    measurementData: { height: 0, prePregnancyWeight: 0, currentWeight: 0 } as MeasurementData,
+    symptoms: { nausea: 'None' as SymptomLevel, vomiting: 'None' as SymptomLevel, other: ''} as Symptoms,
+    labResults: {} as LabResults,
     ocrText: '',
   });
   const [labInputMethod, setLabInputMethod] = useState<'manual' | 'upload'>('manual');
@@ -63,7 +67,7 @@ const AssessmentPage: React.FC<{ navigate: (page: Page) => void }> = ({ navigate
     }));
   };
   
-   const handleSymptomChange = (field: keyof Symptoms, value: string) => {
+    const handleSymptomChange = (field: keyof Symptoms, value: string) => {
     setFormData(prev => ({
       ...prev,
       symptoms: {
@@ -82,7 +86,7 @@ const AssessmentPage: React.FC<{ navigate: (page: Page) => void }> = ({ navigate
 
   const handleAnalyze = useCallback(async () => {
     if (!user) {
-        setError("User not found.");
+        setError("خطأ: يجب تسجيل الدخول لحفظ البيانات.");
         return;
     }
     setIsLoading(true);
@@ -107,13 +111,19 @@ const AssessmentPage: React.FC<{ navigate: (page: Page) => void }> = ({ navigate
         ...formData,
         ocrText: ocrResult || formData.ocrText,
       };
-      const userHistory = patientRecordsDB.filter(r => r.userId === user.id);
+      
+      // ⚠️ ملاحظة: يجب تعديل دالة analyzePatientData لإحضار الهيستوري من Firestore
+      // في الوقت الحالي نمرر مصفوفة فارغة لأننا لم نعد نستخدم mockDB
+      const userHistory: PatientRecord[] = []; 
+      
       const result = await analyzePatientData(dataToAnalyze, userHistory);
       setAnalysisResult(result);
 
-       // Add the new record to our mock DB
+        // ----------------------------------------------------
+        // 🚨 التعديل الحاسم: استخدام دالة Firestore للحفظ
+        // ----------------------------------------------------
       const newRecord: PatientRecord = {
-          id: `rec_${Date.now()}`,
+          id: '', // سيتم تعيينه من Firestore
           timestamp: new Date(),
           userId: user.id,
           personalInfo: formData.personalInfo,
@@ -126,9 +136,11 @@ const AssessmentPage: React.FC<{ navigate: (page: Page) => void }> = ({ navigate
           },
           ocrText: ocrResult || formData.ocrText,
           aiResponse: result
-      };
-      patientRecordsDB.push(newRecord);
-
+      } as PatientRecord;
+      
+      // حفظ السجل في قاعدة بيانات Firestore
+      await saveNewPatientRecord(newRecord); // <--- تم استدعاء الدالة الجديدة
+      // ----------------------------------------------------
 
       handleNext();
     } catch (e: any) {
@@ -171,27 +183,27 @@ const AssessmentPage: React.FC<{ navigate: (page: Page) => void }> = ({ navigate
           </Card>
         );
       case 4:
-         return (
+          return (
             <Card title="الخطوة 4: الأعراض الحالية">
                 <div className="space-y-6">
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                         <div>
-                            <label htmlFor="nausea" className="block text-right text-md font-medium text-brand-gray-dark mb-2">مستوى الغثيان</label>
-                            <select id="nausea" value={formData.symptoms.nausea} onChange={e => handleSymptomChange('nausea', e.target.value)} className="w-full p-3 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-brand-pink">
-                                <option value="None">لا يوجد</option>
-                                <option value="Mild">خفيف</option>
-                                <option value="Moderate">متوسط</option>
-                                <option value="Severe">شديد</option>
-                            </select>
+                        <div>
+                          <label htmlFor="nausea" className="block text-right text-md font-medium text-brand-gray-dark mb-2">مستوى الغثيان</label>
+                          <select id="nausea" value={formData.symptoms.nausea} onChange={e => handleSymptomChange('nausea', e.target.value)} className="w-full p-3 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-brand-pink">
+                            <option value="None">لا يوجد</option>
+                            <option value="Mild">خفيف</option>
+                            <option value="Moderate">متوسط</option>
+                            <option value="Severe">شديد</option>
+                          </select>
                         </div>
                         <div>
-                            <label htmlFor="vomiting" className="block text-right text-md font-medium text-brand-gray-dark mb-2">مستوى التقيؤ</label>
-                            <select id="vomiting" value={formData.symptoms.vomiting} onChange={e => handleSymptomChange('vomiting', e.target.value)} className="w-full p-3 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-brand-pink">
-                                <option value="None">لا يوجد</option>
-                                <option value="Mild">خفيف</option>
-                                <option value="Moderate">متوسط</option>
-                                <option value="Severe">شديد</option>
-                            </select>
+                          <label htmlFor="vomiting" className="block text-right text-md font-medium text-brand-gray-dark mb-2">مستوى التقيؤ</label>
+                          <select id="vomiting" value={formData.symptoms.vomiting} onChange={e => handleSymptomChange('vomiting', e.target.value)} className="w-full p-3 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-brand-pink">
+                            <option value="None">لا يوجد</option>
+                            <option value="Mild">خفيف</option>
+                            <option value="Moderate">متوسط</option>
+                            <option value="Severe">شديد</option>
+                          </select>
                         </div>
                     </div>
 
@@ -209,7 +221,7 @@ const AssessmentPage: React.FC<{ navigate: (page: Page) => void }> = ({ navigate
                     </div>
                 </div>
             </Card>
-        );
+          );
       case 5:
         return (
           <Card title="الخطوة 5: الفحوصات المخبرية">
@@ -261,16 +273,16 @@ const AssessmentPage: React.FC<{ navigate: (page: Page) => void }> = ({ navigate
                             {analysisResult.urgency === 'High' ? 'عالي' : analysisResult.urgency === 'Medium' ? 'متوسط' : analysisResult.urgency === 'Low' ? 'منخفض' : 'طبيعي'}
                         </p>
                     </div>
-                     <div>
+                      <div>
                         <h3 className="text-xl font-bold text-brand-gray-dark mb-2">ملخص سريع</h3>
                         <p className="text-lg bg-gray-100 p-3 rounded-lg">{analysisResult.brief_summary}</p>
-                    </div>
-                    <div>
+                      </div>
+                      <div>
                         <h3 className="text-xl font-bold text-brand-gray-dark mb-2">التقرير المفصل</h3>
                         <div className="bg-gray-50 p-4 rounded-lg">
-                           <ReportRenderer markdown={analysisResult.detailed_report} />
+                            <ReportRenderer markdown={analysisResult.detailed_report} />
                         </div>
-                    </div>
+                      </div>
                 </div>
             ) : null}
           </Card>
@@ -288,15 +300,15 @@ const AssessmentPage: React.FC<{ navigate: (page: Page) => void }> = ({ navigate
         <div className="mt-8">
             {renderStepContent()}
         </div>
-         <div className="mt-8 flex justify-between">
+          <div className="mt-8 flex justify-between">
           {step > 1 && step < steps.length && (
             <Button variant="secondary" onClick={handleBack}>السابق</Button>
           )}
           {step < steps.length - 1 ? (
             <Button onClick={handleNext} className="mr-auto">التالي</Button>
           ) : step === steps.length - 1 ? (
-             <Button onClick={handleAnalyze} className="mr-auto" disabled={isLoading}>
-                {isLoading ? '...جاري التحليل' : 'تحليل البيانات'}
+            <Button onClick={handleAnalyze} className="mr-auto" disabled={isLoading}>
+              {isLoading ? '...جاري التحليل' : 'تحليل البيانات'}
             </Button>
           ) : null }
         </div>
