@@ -51,3 +51,37 @@ export const deletePatientRecord = async (id: string): Promise<boolean> => {
         return false;
     }
 };
+
+// في ملف src/services/mockDB.ts (بعد الدوال الموجودة)
+
+/**
+ * 🚨 دالة مخصصة للمسؤول: تجلب جميع السجلات من جميع المستخدمين.
+ * (تتطلب قواعد أمان تسمح للمسؤول بالقراءة)
+ * @returns قائمة بكل السجلات (PatientRecord[])
+ */
+export const getAllPatientRecordsForAdmin = async (): Promise<PatientRecord[]> => {
+    try {
+        const q = query(
+            collection(db, PATIENT_RECORDS_COLLECTION),
+            orderBy("timestamp", "desc") // الترتيب حسب الأحدث
+        );
+        
+        const querySnapshot = await getDocs(q);
+        
+        const records: PatientRecord[] = querySnapshot.docs.map(doc => {
+            const data = doc.data();
+            return {
+                ...data,
+                id: doc.id,
+                // تحويل Firestore Timestamp إلى JavaScript Date
+                timestamp: data.timestamp.toDate(), 
+            } as PatientRecord;
+        });
+
+        return records;
+
+    } catch (e) {
+        console.error("Error fetching ALL records for admin: ", e);
+        return []; // إرجاع قائمة فارغة عند الفشل
+    }
+};
