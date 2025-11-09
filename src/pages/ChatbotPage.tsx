@@ -1,125 +1,161 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { Page } from '../types';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { Page, PatientRecord } from '../types'; // 🚨 تأكد من استيراد PatientRecord
 import BackButton from '../components/BackButton';
-import Button from '../components/Button';
 import Card from '../components/Card';
-import { getChatResponse } from '../services/geminiService';
 import { useUser } from '../hooks/useUser';
-//import { patientRecordsDB } from '../services/mockDB';
+import LoadingSpinner from '../components/LoadingSpinner';
+import { getChatResponse } from '../services/geminiService';
+import { getPatientRecordsByUserId } from '../services/mockDB'; // 🚨 جلب الهيستوري من Firestore
+// (قد تحتاج لإنشاء هذا الأيقونة أو استخدام نص "ارسال")
+// import SendIcon from '../components/icons/SendIcon'; 
 
-interface Message {
-  text: string;
-  sender: 'user' | 'ai';
+interface ChatMessage {
+  role: 'user' | 'model';
+  content: string;
 }
 
-const ChatbotPage: React.FC<{ navigate: (page: Page) => void }> = ({ navigate }) => {
-  const { user } = useUser();
-  const [messages, setMessages] = useState<Message[]>([]);
-  const [input, setInput] = useState('');
-  const [isLoading, setIsLoading] = useState(false);
-  const messagesEndRef = useRef<HTMLDivElement>(null);
-
-  const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  };
-
-  useEffect(() => {
-    scrollToBottom();
-  }, [messages]);
+// 🚨 دالة مساعدة لإنشاء ملخص الهيستوري (نفس الدالة في geminiService)
+const generateHistorySummary = (history: PatientRecord[]): string => {
+  if (history.length === 0) return 'This is the patient\'s first visit.';
   
-  useEffect(() => {
-     setMessages([{ sender: 'ai', text: 'أهلاً بكِ، أنا "رفيقة"، مساعدتك الذكية. كيف يمكنني مساعدتك اليوم؟' }]);
-  }, []);
+  return `Patient History Summary:
+    ${history.map(rec => {
+        // التحقق من وجود النظام القديم (urgency) أو الجديد (riskScores)
+        const riskDisplay = rec.aiResponse.riskScores
+            ? `(Risk Score: ${(rec.aiResponse.riskScores.overallRisk || 0).toFixed(2)})`
+            // 🚨 إضافة تحقق إضافي للسجلات القديمة جداً
+            : (rec.aiResponse as any).urgency 
+                ? `(Old Urgency: ${(rec.aiResponse as any).urgency})`
+                : '(Risk Score: N/A)'; 
+        return `- On ${rec.timestamp.toLocaleDateString()}: Weight: ${rec.measurementData.currentWeight}kg. ${riskDisplay}`;
+    }).join('\n')}`;
+};
 
-  const generateHistorySummary = () => {
-    if (!user) return 'المستخدم غير معروف.';
+
+const ChatbotPage: React.FC<{ navigate: (page: Page) => void }> = ({ navigate }) => {
+    const { user } = useUser();
+    const [messages, setMessages] = useState<ChatMessage[]>([]);
+    const [input, setInput] = useState('');
+    const [isLoading, setIsLoading] = useState(false);
+    const [error, setError] = useState<string | null>(null);
+    const [history, setHistory] = useState<PatientRecord[]>([]); // 🚨 حالة لحفظ الهيستوري
     
-    const userRecords = patientRecordsDB.filter(r => r.userId === user.id);
-    if (userRecords.length === 0) {
-        return 'لا يوجد تاريخ مرضي مسجل للمستخدم بعد.';
-    }
-    const latestRecord = userRecords.sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime())[0];
-    return `
-      ملخص آخر سجل للمستخدم:
-      - التاريخ: ${latestRecord.timestamp.toLocaleDateString()}
-      - التشخيص: ${latestRecord.aiResponse.brief_summary}
-      - مستوى الأهمية: ${latestRecord.aiResponse.urgency}
-    `;
-  };
+    const messagesEndRef = useRef<HTMLDivElement>(null);
+
+    // 1. جلب هيستوري المريض عند تحميل الصفحة
+    useEffect(() => {
+        const fetchHistory = async () => {
+            if (user?.id) {
+                try {
+                    const records = await getPatientRecordsByUserId(user.id);
+                    setHistory(records);
+                } catch (e) {
+                    console.error("Failed to fetch history for chatbot:", e);
+                }
+            }
+        };
+        fetchHistory();
+    }, [user?.id]);
+
+    // 2. دالة إرسال الرسالة
+    const handleSend = useCallback(async () => {
+        if (!input.trim() || isLoading || !user) return;
+
+        const userMessage: ChatMessage = { role: 'user', content: input };
+        setMessages(prev => [...prev, userMessage]);
+        setInput('');
+        setIsLoading(true);
+        setError(null);
+
+        try {
+            // 🚨 إنشاء ملخص الهيستوري الحقيقي
+            //const historySummary = generateHistorySummary(history);
+            
+            // 🚨 إرسال الرسالة والملخص للـ AI
+            const stream = await getChatResponse(user!.id, input, history);
+            
+            let modelResponse = '';
+            setMessages(prev => [...prev, { role: 'model', content: '...' }]);
+
+            for await (const chunk of stream) {
+                modelResponse += chunk.text;
+                setMessages(prev => {
+                    const newMessages = [...prev];
+                    // التأكد من أن newMessages[newMessages.length - 1] موجود
+                    if (newMessages.length > 0 && newMessages[newMessages.length - 1].role === 'model') {
+                        newMessages[newMessages.length - 1].content = modelResponse;
+                    }
+                    return newMessages;
+                });
+            }
+
+        } catch (e: any) {
+            setError(e.message || "حدث خطأ أثناء التواصل مع المساعد.");
+            // إزالة رسالة "..." عند حدوث خطأ
+            setMessages(prev => prev.filter(msg => msg.content !== '...'));
+        } finally {
+            setIsLoading(false);
+        }
+    }, [input, isLoading, user, history]);
+
+    // 3. التمرير لأسفل عند وصول رسالة جديدة
+    useEffect(() => {
+        messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    }, [messages]);
 
 
-  const handleSend = async () => {
-    if (!input.trim() || !user) return;
+    return (
+        <div>
+            <BackButton navigate={navigate} />
+            <Card title="المساعد الذكي (شات)">
+                <div className="flex flex-col h-[60vh]">
+                    {/* منطقة عرض الرسائل */}
+                    <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-gray-50 rounded-lg">
+                        {messages.map((msg, index) => (
+                            <div key={index} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                                <div
+                                    className={`p-3 rounded-lg max-w-xs ${
+                                        msg.role === 'user' ? 'bg-brand-pink text-white' : 'bg-gray-200 text-gray-800'
+                                    }`}
+                                >
+                                    <p className="whitespace-pre-wrap">{msg.content}</p>
+                                </div>
+                            </div>
+                        ))}
+                        {isLoading && (
+                            <div className="flex justify-start">
+                                <div className="bg-gray-200 text-gray-800 p-3 rounded-lg">
+                                    <LoadingSpinner message="رفيقة تكتب..." />
+                                </div>
+                            </div>
+                        )}
+                        <div ref={messagesEndRef} />
+                    </div>
 
-    const userMessage: Message = { text: input, sender: 'user' };
-    setMessages(prev => [...prev, userMessage]);
-    setInput('');
-    setIsLoading(true);
+                    {error && (
+                        <p className="text-red-600 text-center mt-2">{error}</p>
+                    )}
 
-    try {
-      const historySummary = generateHistorySummary();
-      const stream = await getChatResponse(user.id, input, historySummary);
-      let aiResponseText = '';
-      setMessages(prev => [...prev, { text: '', sender: 'ai' }]); // Add placeholder for streaming
-
-      for await (const chunk of stream) {
-        aiResponseText += chunk.text;
-        setMessages(prev => {
-          const newMessages = [...prev];
-          newMessages[newMessages.length - 1].text = aiResponseText;
-          return newMessages;
-        });
-      }
-    } catch (error) {
-      console.error(error);
-      setMessages(prev => [...prev, { text: 'عذراً، حدث خطأ ما. يرجى المحاولة مرة أخرى.', sender: 'ai' }]);
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  return (
-    <div>
-      <BackButton navigate={navigate} />
-      <Card title="المساعد الذكي (شات)" className="max-w-4xl mx-auto">
-        <div className="h-[60vh] bg-gray-50 rounded-lg p-4 overflow-y-auto flex flex-col space-y-4">
-          {messages.map((msg, index) => (
-            <div key={index} className={`flex ${msg.sender === 'user' ? 'justify-end' : 'justify-start'}`}>
-              <div className={`max-w-lg p-3 rounded-2xl ${msg.sender === 'user' ? 'bg-brand-pink text-white rounded-br-none' : 'bg-white text-gray-800 shadow-sm rounded-bl-none'}`}>
-                {msg.text}
-              </div>
-            </div>
-          ))}
-          {isLoading && (
-             <div className="flex justify-start">
-                <div className="max-w-lg p-3 rounded-2xl bg-white text-gray-800 shadow-sm rounded-bl-none">
-                    <div className="flex items-center space-x-2 space-x-reverse">
-                        <span className="w-2 h-2 bg-gray-400 rounded-full animate-pulse delay-0"></span>
-                        <span className="w-2 h-2 bg-gray-400 rounded-full animate-pulse delay-150"></span>
-                        <span className="w-2 h-2 bg-gray-400 rounded-full animate-pulse delay-300"></span>
+                    {/* منطقة الإدخال */}
+                    <div className="mt-4 flex gap-2">
+                        <input
+                            type="text"
+                            value={input}
+                            onChange={(e) => setInput(e.target.value)}
+                            onKeyPress={(e) => e.key === 'Enter' && handleSend()}
+                            placeholder="اسألي رفيقة أي سؤال..."
+                            className="flex-1 p-3 border border-gray-300 rounded-lg focus:ring-brand-pink focus:border-brand-pink"
+                            disabled={isLoading}
+                        />
+                        <button onClick={handleSend} disabled={isLoading} className="bg-brand-pink text-white py-3 px-5 rounded-lg font-semibold hover:bg-brand-pink-dark transition-colors disabled:bg-gray-400">
+                            {/* <SendIcon className="w-5 h-5" /> */}
+                            ارسال
+                        </button>
                     </div>
                 </div>
-            </div>
-          )}
-          <div ref={messagesEndRef} />
+            </Card>
         </div>
-        <div className="mt-4 flex gap-2">
-          <input
-            type="text"
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyPress={(e) => e.key === 'Enter' && !isLoading && handleSend()}
-            placeholder="اكتبي سؤالك هنا..."
-            className="flex-grow p-3 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-brand-pink"
-            disabled={isLoading}
-          />
-          <Button onClick={handleSend} disabled={isLoading}>
-            إرسال
-          </Button>
-        </div>
-      </Card>
-    </div>
-  );
+    );
 };
 
 export default ChatbotPage;

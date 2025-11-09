@@ -1,35 +1,26 @@
+// src/constants/medicalKB.ts
+
+// 🚨 يجب ملء هذا الملف بالمعلومات الطبية الموثوقة التي سيعتمد عليها الذكاء الاصطناعي
 
 export const MEDICAL_KB = `
---- General Pregnancy Information ---
-- Normal pregnancy duration is 40 weeks.
-- Healthy weight gain is typically 11-16 kg.
-- Fetal movements should be felt daily, typically starting around 18-25 weeks. The 'count to 10' method is common: 10 movements in 2 hours is a good sign.
+---
+**تعريف تسمم الحمل (Preeclampsia):**
+- هو حالة تحدث بعد الأسبوع 20 من الحمل.
+- العرض الرئيسي: ارتفاع ضغط الدم (أعلى من 140/90).
+- أعراض أخرى: صداع شديد، تغيرات في الرؤية، ألم في الجزء العلوي من البطن، تورم مفاجئ.
+- عوامل الخطورة: السن (أقل من 18 أو أكبر من 35)، الحمل الأول، تاريخ مرضي للحالة، السمنة (BMI > 30).
 
---- Blood Pressure (BP) ---
-- Normal BP: < 120/80 mmHg
-- Elevated BP: 120-129 / < 80 mmHg
-- Hypertension Stage 1: 130-139 / 80-89 mmHg
-- **Preeclampsia Risk**: A reading of >= 140/90 mmHg after 20 weeks gestation is a major warning sign. Requires immediate medical attention. Other symptoms include severe headaches, vision changes, and upper abdominal pain.
+**تعريف سكري الحمل (GDM):**
+- هو ارتفاع سكر الدم الذي يتم تشخيصه لأول مرة أثناء الحمل.
+- الأعراض الشائعة: عطش شديد، تبول متكرر (قد تكون أعراضاً طبيعية للحمل أيضاً).
+- التشخيص: يتم عن طريق فحص سكر الدم (Fasting Glucose). القراءة الطبيعية أقل من 92 mg/dL.
+- عوامل الخطورة: السن (أكبر من 25)، السمنة، تاريخ عائلي للمرض.
 
---- Blood Glucose ---
-- **Gestational Diabetes Mellitus (GDM)** screening is crucial.
-- Normal Fasting Blood Glucose: < 92 mg/dL
-- GDM diagnosis if Fasting Glucose is >= 92 mg/dL.
-- Values between 92-125 mg/dL on fasting test suggest GDM.
-
---- Hemoglobin (Hb) ---
-- Anemia is common in pregnancy.
-- Normal Hb levels:
-  - 1st Trimester: > 11 g/dL
-  - 2nd Trimester: > 10.5 g/dL
-  - 3rd Trimester: > 11 g/dL
-- Mild Anemia: Hb 10.0-10.9 g/dL
-- Moderate Anemia: Hb 7.0-9.9 g/dL. May require iron supplements and follow-up.
-- Severe Anemia: Hb < 7.0 g/dL. High risk, requires urgent medical intervention.
-
---- Urgency Levels ---
-- **High Urgency**: Conditions that could be life-threatening. E.g., BP >= 140/90, severe anemia, severe headache, no fetal movement for a long period. Advise immediate contact with a doctor or emergency services.
-- **Medium Urgency**: Abnormal but not immediately life-threatening values. E.g., mild/moderate anemia, elevated fasting glucose. Advise scheduling a doctor's appointment soon.
-- **Low Urgency**: Minor symptoms or slight deviations from normal. E.g., mild morning sickness, slight fatigue. Advise monitoring and mentioning at the next check-up.
-- **Normal**: All values and symptoms are within healthy ranges. Reassure the patient.
+**تعريف فقر الدم (Anemia):**
+- هو انخفاض مستوى الهيموجلوبين (Hb) في الدم.
+- الأعراض الشائعة: تعب شديد، دوخة، ضيق في التنفس، شحوب الجلد.
+- التشخيص: مستوى الهيموجلوبين (Hb) الطبيعي أثناء الحمل يختلف، ولكن بشكل عام:
+  - الثلث الأول والثالث: أقل من 11 g/dL.
+  - الثلث الثاني: أقل من 10.5 g/dL.
+---
 `;

@@ -1,32 +1,73 @@
 import React, { useState, useMemo, useEffect, useCallback } from 'react';
-import { Page, PatientRecord, Role } from '../types';
+// 🚨 استيراد الأنواع المحدثة
+import { Page, PatientRecord, Role, RiskScores, SymptomsPayload } from '../types';
 import BackButton from '../components/BackButton';
 import Card from '../components/Card';
 import { useUser } from '../hooks/useUser';
 import Input from '../components/Input';
-// 🚨 الإضافات الصحيحة: نستخدم دالة جلب كل شيء للمدير
+// 🚨 (النقطة 7) استيراد الدالة الصحيحة لجلب كل السجلات
 import { deletePatientRecord, getAllPatientRecordsForAdmin } from '../services/mockDB'; 
 import TrashIcon from '../components/icons/TrashIcon';
 import ChevronDownIcon from '../components/icons/ChevronDownIcon';
 import DownloadIcon from '../components/icons/DownloadIcon';
 import Modal from '../components/Modal';
-import LoadingSpinner from '../components/LoadingSpinner'; // <--- إضافة لاستخدام شاشة التحميل
+import LoadingSpinner from '../components/LoadingSpinner';
 
-// ⚠️ تم حذف الدالة الوهمية getAllPatientRecords من هنا
+// -----------------------------------------------------------------
+// 🚨 (النقطة 7) دوال مساعدة لترجمة السكور الجديد
+// -----------------------------------------------------------------
+const getRiskDisplay = (aiResponse: AIResponse | undefined) => {
+    // التحقق من وجود 'aiResponse'
+    if (!aiResponse) {
+        return { text: 'N/A', className: 'bg-gray-200 text-gray-800' };
+    }
+    
+    // 1. التحقق من النظام الجديد (riskScores)
+    if (aiResponse.riskScores) {
+        const score = aiResponse.riskScores.overallRisk;
+        if (score >= 0.75) return { text: 'عالي', className: 'bg-red-200 text-red-800', scoreText: `(${(score * 100).toFixed(0)}%)` };
+        if (score >= 0.5) return { text: 'متوسط', className: 'bg-yellow-200 text-yellow-800', scoreText: `(${(score * 100).toFixed(0)}%)` };
+        if (score >= 0.25) return { text: 'منخفض', className: 'bg-blue-200 text-blue-800', scoreText: `(${(score * 100).toFixed(0)}%)` };
+        return { text: 'طبيعي', className: 'bg-green-200 text-green-800', scoreText: `(${(score * 100).toFixed(0)}%)` };
+    }
+    
+    // 2. التحقق من النظام القديم (urgency) - (as any) للتوافق
+    if ((aiResponse as any).urgency) {
+        const urgency = (aiResponse as any).urgency;
+        if (urgency === 'High') return { text: 'عالي (قديم)', className: 'bg-red-200 text-red-800', scoreText: '' };
+        if (urgency === 'Medium') return { text: 'متوسط (قديم)', className: 'bg-yellow-200 text-yellow-800', scoreText: '' };
+        if (urgency === 'Low') return { text: 'منخفض (قديم)', className: 'bg-blue-200 text-blue-800', scoreText: '' };
+        return { text: 'طبيعي (قديم)', className: 'bg-green-200 text-green-800', scoreText: '' };
+    }
 
-const symptomTranslations: { [key: string]: string } = {
-  'None': 'لا يوجد',
-  'Mild': 'خفيف',
-  'Moderate': 'متوسط',
-  'Severe': 'شديد',
+    // 3. حالة الطوارئ
+    return { text: 'N/A', className: 'bg-gray-200 text-gray-800', scoreText: '' };
 };
+
+// دالة للفلترة (إنجليزي)
+const getRiskCategory = (aiResponse: AIResponse | undefined) => {
+    if (!aiResponse) return 'All';
+    
+    if (aiResponse.riskScores) {
+        const score = aiResponse.riskScores.overallRisk;
+        if (score >= 0.75) return 'High';
+        if (score >= 0.5) return 'Medium';
+        if (score >= 0.25) return 'Low';
+        return 'Normal';
+    }
+    if ((aiResponse as any).urgency) {
+        return (aiResponse as any).urgency; 
+    }
+    return 'All';
+};
+// -----------------------------------------------------------------
 
 
 const AdminDashboardPage: React.FC<{ navigate: (page: Page) => void }> = ({ navigate }) => {
   const { user } = useUser();
   const [records, setRecords] = useState<PatientRecord[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
-  const [filterUrgency, setFilterUrgency] = useState('All');
+  const [filterUrgency, setFilterUrgency] = useState('All'); 
   const [expandedRecordId, setExpandedRecordId] = useState<string | null>(null);
   const [recordToDelete, setRecordToDelete] = useState<PatientRecord | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -36,7 +77,6 @@ const AdminDashboardPage: React.FC<{ navigate: (page: Page) => void }> = ({ navi
     if (user?.role === Role.Admin) {
         setIsLoading(true);
         try {
-            // 🚨 استدعاء الدالة الصحيحة التي تجلب كل السجلات من Firestore
             const allRecords = await getAllPatientRecordsForAdmin(); 
             setRecords(allRecords);
         } catch (error) {
@@ -55,11 +95,11 @@ const AdminDashboardPage: React.FC<{ navigate: (page: Page) => void }> = ({ navi
     }
   }, [fetchAllRecords, user?.role]);
 
-
   const sortedData = useMemo(() => {
     return [...records].sort((a,b) => b.timestamp.getTime() - a.timestamp.getTime());
   }, [records]);
 
+  // 🚨 (النقطة 7) تعديل منطق الفلترة ليعمل مع السكور
   const filteredData = useMemo(() => {
     return sortedData
       .filter(record => {
@@ -71,7 +111,8 @@ const AdminDashboardPage: React.FC<{ navigate: (page: Page) => void }> = ({ navi
       })
       .filter(record => {
         if (filterUrgency === 'All') return true;
-        return record.aiResponse.urgency === filterUrgency;
+        const riskCategory = getRiskCategory(record.aiResponse);
+        return riskCategory === filterUrgency;
       });
   }, [searchTerm, filterUrgency, sortedData]);
   
@@ -83,57 +124,72 @@ const AdminDashboardPage: React.FC<{ navigate: (page: Page) => void }> = ({ navi
     if (recordToDelete) {
         try {
             const success = await deletePatientRecord(recordToDelete.id); 
-            
             if (success) {
-                // إعادة تحميل البيانات بعد الحذف
                 await fetchAllRecords(); 
             } else {
-                // استخدام modal أو رسالة مخصصة بدلاً من alert()
                 console.error("Failed to delete record from Firestore."); 
             }
         } catch (error) {
             console.error("Failed to delete record:", error);
         } finally {
-            setRecordToDelete(null); // إغلاق المودال
+            setRecordToDelete(null);
         }
     }
   };
-
 
   const toggleDetails = (recordId: string) => {
     setExpandedRecordId(prevId => (prevId === recordId ? null : recordId));
   };
   
+  // 🚨 (النقطة 4) تعديل دالة تصدير الإكسيل
   const downloadCSV = () => {
     const headers = [
       "ID", "UserID", "Timestamp", "Name", "Age",
       "G", "P", "A", "Height", "Pre-Pregnancy Weight", "Current Weight",
-      "Nausea", "Vomiting", "Other Symptoms",
+      // (النقطة 1) تعديل الأعراض لتطابق الهيكل الجديد
+      "Headache", "Vision Changes", "Upper Abdominal Pain", "Swelling",
+      "Excessive Thirst", "Frequent Urination",
+      "Fatigue", "Dizziness", "Shortness of Breath", "Other Symptoms",
       "Systolic BP", "Diastolic BP", "Fasting Glucose", "Hb",
-      "OCR Text",
-      "AI Urgency", "AI Brief Summary", "AI Detailed Report"
+      // (النقطة 7) تعديل السكور
+      "Overall Risk (0-1)", "Preeclampsia Risk (0-1)", "GDM Risk (0-1)", "Anemia Risk (0-1)",
+      "AI Brief Summary", "AI Detailed Report", "Known Diagnosis"
     ];
     
-    const rows = filteredData.map(rec => [
-      rec.id, rec.userId, rec.timestamp.toISOString(), rec.personalInfo.name, rec.personalInfo.age,
-      rec.pregnancyHistory.g, rec.pregnancyHistory.p, rec.pregnancyHistory.a,
-      rec.measurementData.height, rec.measurementData.prePregnancyWeight, rec.measurementData.currentWeight,
-      rec.symptoms.nausea, rec.symptoms.vomiting, `"${rec.symptoms.other.replace(/"/g, '""')}"`,
-      rec.labResults.systolicBp ?? '', rec.labResults.diastolicBp ?? '', rec.labResults.fastingGlucose ?? '', rec.labResults.hb ?? '',
-      `"${(rec.ocrText || '').replace(/"/g, '""')}"`,
-      rec.aiResponse.urgency, `"${rec.aiResponse.brief_summary.replace(/"/g, '""')}"`, `"${rec.aiResponse.detailed_report.replace(/"/g, '""')}"`
-    ].join(','));
+    const rows = filteredData.map(rec => {
+        // التحقق من وجود الهياكل قبل تصديرها
+        const symptoms = rec.symptoms || {} as SymptomsPayload;
+        const labs = rec.labResults || {};
+        const riskScores = rec.aiResponse.riskScores || {} as RiskScores;
+        const aiResponse = rec.aiResponse || {};
+
+        return [
+          rec.id, rec.userId, rec.timestamp.toISOString(), rec.personalInfo.name, rec.personalInfo.age,
+          rec.pregnancyHistory.g, rec.pregnancyHistory.p, rec.pregnancyHistory.a,
+          rec.measurementData.height, rec.measurementData.prePregnancyWeight, rec.measurementData.currentWeight,
+          symptoms.headache, symptoms.visionChanges, symptoms.upperAbdominalPain, symptoms.swelling,
+          symptoms.excessiveThirst, symptoms.frequentUrination,
+          symptoms.fatigue, symptoms.dizziness, symptoms.shortnessOfBreath,
+          `"${(symptoms.otherSymptoms || '').replace(/"/g, '""')}"`,
+          labs.systolicBp ?? '', labs.diastolicBp ?? '', labs.fastingGlucose ?? '', labs.hb ?? '',
+          riskScores.overallRisk ?? '',
+          riskScores.preeclampsiaRisk ?? '',
+          riskScores.gdmRisk ?? '',
+          riskScores.anemiaRisk ?? '',
+          `"${(aiResponse.brief_summary || '').replace(/"/g, '""')}"`, `"${(aiResponse.detailed_report || '').replace(/"/g, '""')}"`,
+          rec.knownDiagnosis ? 'Yes' : 'No'
+        ].join(',');
+    });
     
     const csvContent = "data:text/csv;charset=utf-8,\uFEFF" + [headers.join(','), ...rows].join('\n');
     const encodedUri = encodeURI(csvContent);
     const link = document.createElement("a");
     link.setAttribute("href", encodedUri);
-    link.setAttribute("download", "patient_records.csv");
+    link.setAttribute("download", "All_Patient_Records.csv"); // (النقطة 4) تغيير الاسم
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
   };
-
 
   if (user?.role !== Role.Admin) {
     return (
@@ -155,7 +211,6 @@ const AdminDashboardPage: React.FC<{ navigate: (page: Page) => void }> = ({ navi
       );
   }
 
-
   return (
     <div>
       <BackButton navigate={navigate} />
@@ -166,13 +221,14 @@ const AdminDashboardPage: React.FC<{ navigate: (page: Page) => void }> = ({ navi
             label="بحث بالاسم أو المعرف" 
             type="text" 
             value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
+            onChange={(e) => setSearchTerm(e.g.value)}
             className="flex-grow"
           />
           <div className="flex-grow">
             <label htmlFor="filter" className="block text-right text-md font-medium text-brand-gray-dark mb-2">
               تصفية حسب الأهمية
             </label>
+            {/* (النقطة 7) الفلتر الآن يستخدم الفئات الجديدة */}
             <select
                 id="filter"
                 value={filterUrgency}
@@ -187,6 +243,7 @@ const AdminDashboardPage: React.FC<{ navigate: (page: Page) => void }> = ({ navi
             </select>
           </div>
             <div className="flex-shrink-0 self-end">
+             {/* (النقطة 4) زر تحميل الإكسيل */}
              <button onClick={downloadCSV} className="w-full md:w-auto flex items-center justify-center gap-2 bg-green-600 text-white font-bold py-2.5 px-4 rounded-lg hover:bg-green-700 transition-colors">
                 <DownloadIcon className="w-5 h-5" />
                 <span>تحميل كـ CSV</span>
@@ -207,20 +264,25 @@ const AdminDashboardPage: React.FC<{ navigate: (page: Page) => void }> = ({ navi
                 </tr>
             </thead>
             <tbody>
-                {filteredData.map(record => (
+                {filteredData.map(record => {
+                    // (النقطة 7) حساب العرض
+                    const riskDisplay = getRiskDisplay(record.aiResponse);
+                    
+                    return (
                     <React.Fragment key={record.id}>
                       <tr className="hover:bg-gray-50">
                           <td className="py-3 px-4 border-b whitespace-nowrap">{record.timestamp.toLocaleDateString('ar-EG')}</td>
                           <td className="py-3 px-4 border-b whitespace-nowrap">{record.personalInfo.name} ({record.personalInfo.age} سنة)</td>
+                          
+                          {/* 🚨 (النقطة 7) عرض السكور الجديد */}
                           <td className="py-3 px-4 border-b">
                               <span className={`px-2 py-1 rounded-full text-sm font-semibold ${
-                                  record.aiResponse.urgency === 'High' ? 'bg-red-200 text-red-800' :
-                                  record.aiResponse.urgency === 'Medium' ? 'bg-yellow-200 text-yellow-800' :
-                                  record.aiResponse.urgency === 'Low' ? 'bg-blue-200 text-blue-800' : 'bg-green-200 text-green-800'
+                                  riskDisplay.className
                               }`}>
-                                  {record.aiResponse.urgency === 'High' ? 'عالي' : record.aiResponse.urgency === 'Medium' ? 'متوسط' : record.aiResponse.urgency === 'Low' ? 'منخفض' : 'طبيعي'}
+                                  {riskDisplay.text} {riskDisplay.scoreText}
                               </span>
                           </td>
+                          
                           <td className="py-3 px-4 border-b max-w-xs truncate">{record.aiResponse.brief_summary}</td>
                           <td className="py-3 px-4 border-b text-center">
                               <button onClick={() => toggleDetails(record.id)} className="text-brand-pink hover:text-brand-pink-dark transition-colors">
@@ -254,15 +316,30 @@ const AdminDashboardPage: React.FC<{ navigate: (page: Page) => void }> = ({ navi
                                   </div>
                                    <div className="space-y-1">
                                       <h4 className="font-bold text-brand-pink-dark">الأعراض المسجلة</h4>
-                                      <p><strong>الغثيان:</strong> {symptomTranslations[record.symptoms.nausea]}</p>
-                                      <p><strong>التقيؤ:</strong> {symptomTranslations[record.symptoms.vomiting]}</p>
-                                      <p><strong>أعراض أخرى:</strong> {record.symptoms.other || 'لا يوجد'}</p>
+                                      {/* (النقطة 1) عرض الأعراض الجديدة */}
+                                      <p><strong>صداع:</strong> {record.symptoms.headache ? 'نعم' : 'لا'}</p>
+                                      <p><strong>تغيرات الرؤية:</strong> {record.symptoms.visionChanges ? 'نعم' : 'لا'}</p>
+                                      <p><strong>ألم البطن:</strong> {record.symptoms.upperAbdominalPain ? 'نعم' : 'لا'}</p>
+                                      <p><strong>تورم:</strong> {record.symptoms.swelling ? 'نعم' : 'لا'}</p>
+                                      <p><strong>عطش:</strong> {record.symptoms.excessiveThirst ? 'نعم' : 'لا'}</p>
+                                      <p><strong>تبول متكرر:</strong> {record.symptoms.frequentUrination ? 'نعم' : 'لا'}</p>
+                                      <p><strong>تعب:</strong> {record.symptoms.fatigue ? 'نعم' : 'لا'}</p>
+                                      <p><strong>دوخة:</strong> {record.symptoms.dizziness ? 'نعم' : 'لا'}</p>
+                                      <p><strong>ضيق تنفس:</strong> {record.symptoms.shortnessOfBreath ? 'نعم' : 'لا'}</p>
+                                      <p><strong>أعراض أخرى:</strong> {record.symptoms.otherSymptoms || 'لا يوجد'}</p>
                                    </div>
                                    <div className="space-y-1">
                                       <h4 className="font-bold text-brand-pink-dark">التحاليل المخبرية</h4>
                                       <p><strong>ضغط الدم:</strong> {record.labResults.systolicBp}/{record.labResults.diastolicBp}</p>
                                       <p><strong>سكر الدم (صائم):</strong> {record.labResults.fastingGlucose}</p>
                                       <p><strong>الهيموجلوبين (Hb):</strong> {record.labResults.hb}</p>
+                                   </div>
+                                   {/* (النقطة 7) عرض السكور التفصيلي */}
+                                   <div className="lg:col-span-3">
+                                       <h4 className="font-bold text-brand-pink-dark">تفاصيل الخطورة (للمسؤول)</h4>
+                                       <pre className="bg-white p-2 rounded mt-1 text-left" dir="ltr">
+                                          {JSON.stringify(record.aiResponse.riskScores, null, 2)}
+                                       </pre>
                                    </div>
                                    {record.ocrText && (
                                        <div className="lg:col-span-3">
@@ -275,7 +352,8 @@ const AdminDashboardPage: React.FC<{ navigate: (page: Page) => void }> = ({ navi
                           </tr>
                         )}
                     </React.Fragment>
-                ))}
+                );
+                })}
             </tbody>
             </table>
         </div>

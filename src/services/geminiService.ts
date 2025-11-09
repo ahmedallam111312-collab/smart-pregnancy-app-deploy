@@ -1,72 +1,74 @@
 import { GoogleGenAI, Type, Chat } from "@google/genai";
-import { PatientRecord, LabResults, AIResponse } from '../types';
+import { PatientRecord, LabResults, AIResponse, RiskScores, SymptomsPayload } from '../types'; // 🚨 استيراد الأنواع الجديدة
 import { MEDICAL_KB } from '../constants/medicalKB';
 
 const API_KEY = import.meta.env.VITE_API_KEY;
+if (!API_KEY) { console.error("API_KEY environment variable not set."); }
 
-if (!API_KEY) {
-  console.error("API_KEY environment variable not set.");
-}
-
-// استخدام 'new GoogleGenAI' بدلاً من 'new GoogleGenAI()' إذا كانت لديك مشاكل في الإصدار
 const ai = new GoogleGenAI({ apiKey: API_KEY! }); 
 
-// ----------------------------------------------------
-// 🚨 واجهة التحاليل المخبرية (Schema)
-// ----------------------------------------------------
+// 🚨 (النقطة 7) تعريف هيكل (Schema) لنظام النقاط
+const RiskScoresSchema = {
+    type: Type.OBJECT,
+    properties: {
+        overallRisk: { type: Type.NUMBER, description: "Overall risk score (0.0 to 1.0)." },
+        preeclampsiaRisk: { type: Type.NUMBER, description: "Preeclampsia risk score (0.0 to 1.0)." },
+        gdmRisk: { type: Type.NUMBER, description: "Gestational Diabetes (GDM) risk score (0.0 to 1.0)." },
+        anemiaRisk: { type: Type.NUMBER, description: "Anemia risk score (0.0 to 1.0)." },
+    },
+    required: ["overallRisk", "preeclampsiaRisk", "gdmRisk", "anemiaRisk"],
+};
+
 const LabResultsSchema = {
     type: Type.OBJECT,
     properties: {
-        systolicBp: { type: Type.NUMBER, nullable: true, description: "Extracted Systolic Blood Pressure (optional)." },
-        diastolicBp: { type: Type.NUMBER, nullable: true, description: "Extracted Diastolic Blood Pressure (optional)." },
-        fastingGlucose: { type: Type.NUMBER, nullable: true, description: "Extracted Fasting Glucose (optional)." },
-        hb: { type: Type.NUMBER, nullable: true, description: "Extracted Hemoglobin (Hb) (optional)." },
+        systolicBp: { type: Type.NUMBER, nullable: true },
+        diastolicBp: { type: Type.NUMBER, nullable: true },
+        fastingGlucose: { type: Type.NUMBER, nullable: true },
+        hb: { type: Type.NUMBER, nullable: true },
     },
-    // لا نضع أي حقل هنا في Required لأن كل التحاليل اختيارية
 };
 
-/**
- * Mocks an OCR service that extracts text from an image.
- */
 export const mockOcrService = async (file: File): Promise<string> => {
   console.log(`Simulating OCR for file: ${file.name}`);
-  await new Promise(resolve => setTimeout(resolve, 1500)); // Simulate network delay
-  return `
-    --- LAB RESULTS ---
-    Fasting Blood Sugar: 95 mg/dL
-    Hemoglobin (Hb): 10.8 g/dL
-    Systolic Blood Pressure: 125 mmHg
-    Diastolic Blood Pressure: 82 mmHg
-  `;
+  await new Promise(resolve => setTimeout(resolve, 1500)); 
+  return `Fasting Blood Sugar: 95, Hb: 10.8, BP: 125/82`;
+};
+
+// 🚨 دالة مساعدة لإنشاء ملخص الهيستوري
+const getHistorySummary = (history: PatientRecord[]): string => {
+  if (history.length === 0) return 'This is the patient\'s first visit.';
+  
+  return `Patient History Summary:
+    ${history.map(rec => {
+        const riskDisplay = rec.aiResponse.riskScores
+            ? `(Risk Score: ${(rec.aiResponse.riskScores.overallRisk || 0).toFixed(2)})`
+            // (as any) للتوافق مع السجلات القديمة التي كانت تستخدم Urgency
+            : `(Old Urgency: ${(rec.aiResponse as any).urgency || 'N/A'})`; 
+        return `- On ${rec.timestamp.toLocaleDateString()}: Weight: ${rec.measurementData.currentWeight}kg. ${riskDisplay}`;
+    }).join('\n')}`;
 };
 
 /**
- * Analyzes patient data using the Gemini API to provide a comprehensive report.
+ * Analyzes patient data using the Gemini API.
  */
 export const analyzePatientData = async (
-  currentData: Omit<PatientRecord, 'id' | 'timestamp' | 'aiResponse'>,
+  currentData: (Omit<PatientRecord, 'id' | 'timestamp' | 'aiResponse' | 'symptoms'> & { symptoms: SymptomsPayload }), // 🚨 استخدام الهيكل الجديد
   history: PatientRecord[]
 ): Promise<AIResponse> => {
-  const historySummary = history.length > 0
-    ? `Patient History Summary:
-      ${history.map(rec => `- On ${rec.timestamp.toLocaleDateString()}: Weight was ${rec.measurementData.currentWeight}kg. Key symptom: ${rec.symptoms.other}. Urgency: ${rec.aiResponse.urgency}`).join('\n')}`
-    : 'This is the patient\'s first visit.';
+
+  const historySummary = getHistorySummary(history);
 
   const prompt = `
     **ROLE: Expert Obstetrician AI Assistant**
-
-    **CONTEXT:**
-    You are analyzing the health record of a pregnant patient. Your analysis must be based *only* on the provided medical knowledge base and the patient's data.
-
-    **MEDICAL KNOWLEDGE BASE:**
-    ${MEDICAL_KB}
+    **CONTEXT:** Analyze the health record of a pregnant patient based *only* on the provided data and medical knowledge.
+    **MEDICAL KNOWLEDGE BASE:** ${MEDICAL_KB}
 
     **PATIENT'S CURRENT DATA:**
     - Personal Info: Name: ${currentData.personalInfo.name}, Age: ${currentData.personalInfo.age}
     - Pregnancy History: G: ${currentData.pregnancyHistory.g}, P: ${currentData.pregnancyHistory.p}, A: ${currentData.pregnancyHistory.a}
     - Measurements: Height: ${currentData.measurementData.height}cm, Pre-pregnancy Weight: ${currentData.measurementData.prePregnancyWeight}kg, Current Weight: ${currentData.measurementData.currentWeight}kg
-    - Reported Symptoms (Structured): Nausea - ${currentData.symptoms.nausea}, Vomiting - ${currentData.symptoms.vomiting}
-    - Reported Symptoms (Other): ${currentData.symptoms.other || 'N/A'}
+    - 🚨 (النقطة 1) Reported Symptoms (Checklist): ${JSON.stringify(currentData.symptoms)}
     - Lab Results (Manual Input): ${JSON.stringify(currentData.labResults, null, 2)}
     - Lab Results (from OCR if available): ${currentData.ocrText || 'N/A'}
 
@@ -74,15 +76,17 @@ export const analyzePatientData = async (
     ${historySummary}
 
     **TASK:**
-    Analyze all the provided information. You MUST return a JSON object with the following structure. Do not include any text or markdown formatting outside of the JSON object.
+    Analyze all information (Current Data, History, Risk Factors like Age, and Medical KB). 
+    You MUST return a JSON object only. Do not include any text outside the JSON object.
+  **IMPORTANT: The entire response, especially 'brief_summary' and 'detailed_report', MUST be in ARABIC.**
+    
     Your entire response should be only the JSON object.
-
     The JSON structure MUST be:
     {
-      "urgency": "string", // "High", "Medium", "Low", "Normal"
-      "brief_summary": "string", // A one-sentence summary in Arabic.
-      "detailed_report": "string", // A detailed, multi-paragraph report in Arabic. The report MUST be comprehensive, at least two paragraphs long, and include recommendations. Use markdown for formatting: use '##' for headings, '*' for list items, and separate paragraphs with a double newline.
-      "extracted_labs": { /* Lab results matching the schema below */ }
+      "riskScores": { "overallRisk": number, "preeclampsiaRisk": number, "gdmRisk": number, "anemiaRisk": number },
+      "brief_summary": "string",
+      "detailed_report": "string",
+      "extracted_labs": { "systolicBp": number | null, "diastolicBp": number | null, "fastingGlucose": number | null, "hb": number | null }
     }
   `;
 
@@ -95,73 +99,57 @@ export const analyzePatientData = async (
         responseSchema: {
           type: Type.OBJECT,
           properties: {
-            urgency: { type: Type.STRING, description: "Urgency level: High, Medium, Low, or Normal" },
-            brief_summary: { type: Type.STRING, description: "One-sentence summary in Arabic." },
-            detailed_report: { type: Type.STRING, description: "Detailed report in Arabic with markdown. Use '##' for headings and '*' for list items." },
-            extracted_labs: LabResultsSchema, // 🚨 استخدام الـ Schema المنفصل للتحاليل
+            riskScores: RiskScoresSchema, // <-- 🚨 استخدام الـ Schema الجديد
+            brief_summary: { type: Type.STRING },
+            detailed_report: { type: Type.STRING },
+            extracted_labs: LabResultsSchema, 
           },
-          required: ["urgency", "brief_summary", "detailed_report", "extracted_labs"],
+          required: ["riskScores", "brief_summary", "detailed_report", "extracted_labs"],
         },
       },
     });
 
-    let jsonText = response.text.trim();
-    
-    // Clean potential markdown wrapping
-    if (jsonText.startsWith('```json')) {
-      jsonText = jsonText.substring(7, jsonText.length - 3).trim();
-    } else if (jsonText.startsWith('```')) {
-        jsonText = jsonText.substring(3, jsonText.length - 3).trim();
-    }
-    
+    const jsonText = response.text.trim();
     const result = JSON.parse(jsonText);
 
-    // Stricter Validation: Check for a meaningful report.
-    if (
-        !result || typeof result !== 'object' || 
-        !result.urgency || 
-        !result.brief_summary || 
-        !result.detailed_report || result.detailed_report.trim().length < 50
-    ) {
-        console.error("Invalid or incomplete AI response structure (Post-parse check):", result);
-        throw new Error("فشل الذكاء الاصطناعي في توليد تقرير متكامل. يرجى مراجعة المدخلات والمحاولة مرة أخرى.");
+    if (!result || !result.riskScores || result.riskScores.overallRisk == null || !result.brief_summary || !result.detailed_report) {
+        console.error("Invalid or incomplete AI response structure:", result);
+        throw new Error("فشل الذكاء الاصطناعي في توليد تقرير متكامل.");
     }
-
     return result as AIResponse;
 
   } catch (error) {
     console.error("Error analyzing patient data:", error);
     if (error instanceof Error && error.message.includes('JSON') || String(error).includes('API key not valid')) {
-        throw new Error("فشل في تحليل استجابة الذكاء الاصطناعي. قد يكون المفتاح غير صحيح أو حدث خطأ في البنية.");
+        throw new Error("فشل في تحليل استجابة الذكاء الاصطناعي (JSON Error or Invalid Key).");
     }
-    throw new Error("حدث خطأ غير متوقع أثناء تحليل البيانات. يرجى المحاولة مرة أخرى.");
+    throw new Error("حدث خطأ غير متوقع أثناء تحليل البيانات.");
   }
 };
 
 
+// ----------------------------------------------------
+// 🚨 (النقطة 2) تحديث الشات بوت
+// ----------------------------------------------------
 let chatInstances: { [userId: string]: Chat } = {};
 
-export const getChatResponse = async (userId: string, message: string, historySummary: string) => {
+export const getChatResponse = async (userId: string, message: string, history: PatientRecord[]) => {
+    // 🚨 جلب الهيستوري وتمريره بشكل صحيح
+    const historySummary = getHistorySummary(history);
+
     if (!chatInstances[userId]) {
         const systemInstruction = `
-            You are a helpful and compassionate AI assistant for pregnant women, named 'رفيقة'.
-            Your knowledge is strictly limited to the provided MEDICAL KNOWLEDGE BASE.
-            You MUST NOT provide any medical advice beyond this knowledge base.
-            If asked about a topic not in the knowledge base, you must state that you cannot answer.
-            You will be given a summary of the user's health history for context.
-            Your answers must be in Arabic.
-
-            MEDICAL KNOWLEDGE BASE:
-            ${MEDICAL_KB}
-
-            USER'S HISTORY SUMMARY:
-            ${historySummary}
+            You are a helpful AI assistant 'رفيقة'.
+            Your knowledge is STRICTLY limited to the MEDICAL KNOWLEDGE BASE.
+            Do NOT provide medical advice beyond this base.
+            You will be given the user's health history for context.
+            Answers must be in Arabic.
+            MEDICAL KNOWLEDGE BASE: ${MEDICAL_KB}
+            USER'S HISTORY SUMMARY: ${historySummary} 
         `;
         chatInstances[userId] = ai.chats.create({
             model: 'gemini-2.5-flash',
-            config: {
-                systemInstruction: systemInstruction,
-            },
+            config: { systemInstruction: systemInstruction },
         });
     }
 
@@ -170,8 +158,7 @@ export const getChatResponse = async (userId: string, message: string, historySu
         return stream;
     } catch (error) {
         console.error("Error getting chat response:", error);
-        // Reset chat instance on error in case it's a session issue
         delete chatInstances[userId];
-        throw new Error("حدث خطأ أثناء التواصل مع المساعد. يرجى المحاولة مرة أخرى.");
+        throw new Error("حدث خطأ أثناء التواصل مع المساعد.");
     }
 };
