@@ -104,6 +104,23 @@ const isValueNormal = (type: string, value?: number): boolean => {
 };
 
 // ============================================================================
+// SAFE NUMBER UTILITIES
+// ============================================================================
+const safeNumber = (value: any): number => {
+  const num = Number(value);
+  return isNaN(num) ? 0 : num;
+};
+
+const safeToFixed = (value: any, decimals: number = 1): string => {
+  return safeNumber(value).toFixed(decimals);
+};
+
+const safeGetNumber = (value: any): number | undefined => {
+  const num = Number(value);
+  return isNaN(num) ? undefined : num;
+};
+
+// ============================================================================
 // CUSTOM TOOLTIP COMPONENT
 // ============================================================================
 const CustomTooltip: React.FC<any> = ({ active, payload, label }) => {
@@ -122,7 +139,7 @@ const CustomTooltip: React.FC<any> = ({ active, payload, label }) => {
             <span className="text-sm">{entry.name}:</span>
           </span>
           <span className="font-bold text-gray-900">
-            {typeof entry.value === 'number' ? entry.value.toFixed(1) : entry.value}
+            {typeof entry.value === 'number' ? safeToFixed(entry.value, 1) : entry.value}
           </span>
         </div>
       ))}
@@ -201,7 +218,7 @@ const DashboardPage: React.FC<{ navigate: (page: Page) => void }> = ({ navigate 
   }, [fetchRecords]);
 
   // ============================================================================
-  // DATA PROCESSING
+  // DATA PROCESSING WITH SAFETY CHECKS
   // ============================================================================
   const filteredRecords = useMemo(() => {
     if (timeRange === 'all') return userRecords;
@@ -217,11 +234,11 @@ const DashboardPage: React.FC<{ navigate: (page: Page) => void }> = ({ navigate 
     return filteredRecords.map(record => ({
       date: record.timestamp.toLocaleDateString('ar-EG', { month: 'short', day: 'numeric' }),
       fullDate: record.timestamp,
-      weight: record.measurementData.currentWeight,
-      systolicBp: record.labResults.systolicBp,
-      diastolicBp: record.labResults.diastolicBp,
-      glucose: record.labResults.fastingGlucose,
-      hb: record.labResults.hb,
+      weight: safeNumber(record.measurementData.currentWeight),
+      systolicBp: safeGetNumber(record.labResults.systolicBp),
+      diastolicBp: safeGetNumber(record.labResults.diastolicBp),
+      glucose: safeGetNumber(record.labResults.fastingGlucose),
+      hb: safeGetNumber(record.labResults.hb),
       overallRisk: record.aiResponse?.riskScores?.overallRisk ? record.aiResponse.riskScores.overallRisk * 100 : undefined,
     }));
   }, [filteredRecords]);
@@ -229,11 +246,19 @@ const DashboardPage: React.FC<{ navigate: (page: Page) => void }> = ({ navigate 
   const latestRecord = useMemo(() => userRecords[userRecords.length - 1], [userRecords]);
 
   // ============================================================================
-  // STATISTICS CALCULATIONS
+  // STATISTICS CALCULATIONS WITH SAFETY CHECKS
   // ============================================================================
   const statistics = useMemo((): StatCard[] => {
     if (!latestRecord) return [];
 
+    // Safe number conversions
+    const safeCurrentWeight = safeNumber(latestRecord.measurementData.currentWeight);
+    const safeSystolicBp = safeGetNumber(latestRecord.labResults.systolicBp);
+    const safeDiastolicBp = safeGetNumber(latestRecord.labResults.diastolicBp);
+    const safeFastingGlucose = safeGetNumber(latestRecord.labResults.fastingGlucose);
+    const safeHb = safeGetNumber(latestRecord.labResults.hb);
+
+    // Safe trend calculations
     const weights = chartData.map(d => d.weight).filter(Boolean);
     const weightTrend = calculateTrend(weights);
 
@@ -249,45 +274,45 @@ const DashboardPage: React.FC<{ navigate: (page: Page) => void }> = ({ navigate 
     return [
       {
         title: 'الوزن الحالي',
-        value: latestRecord.measurementData.currentWeight.toFixed(1),
+        value: safeToFixed(safeCurrentWeight, 1),
         unit: 'كجم',
         trend: weightTrend.trend,
-        trendValue: `${weightTrend.percentage.toFixed(1)}%`,
+        trendValue: `${safeToFixed(weightTrend.percentage, 1)}%`,
         icon: '⚖️',
         color: 'text-purple-600',
         bgColor: 'bg-purple-50'
       },
       {
         title: 'ضغط الدم',
-        value: latestRecord.labResults.systolicBp && latestRecord.labResults.diastolicBp 
-          ? `${latestRecord.labResults.systolicBp}/${latestRecord.labResults.diastolicBp}` 
+        value: safeSystolicBp && safeDiastolicBp 
+          ? `${safeSystolicBp}/${safeDiastolicBp}` 
           : 'غير متوفر',
         unit: '',
         trend: bpTrend.trend,
-        trendValue: `${bpTrend.percentage.toFixed(1)}%`,
+        trendValue: `${safeToFixed(bpTrend.percentage, 1)}%`,
         icon: '❤️',
-        color: isValueNormal('systolicBp', latestRecord.labResults.systolicBp) ? 'text-green-600' : 'text-red-600',
-        bgColor: isValueNormal('systolicBp', latestRecord.labResults.systolicBp) ? 'bg-green-50' : 'bg-red-50'
+        color: isValueNormal('systolicBp', safeSystolicBp) ? 'text-green-600' : 'text-red-600',
+        bgColor: isValueNormal('systolicBp', safeSystolicBp) ? 'bg-green-50' : 'bg-red-50'
       },
       {
         title: 'سكر الدم',
-        value: latestRecord.labResults.fastingGlucose?.toFixed(1) || 'غير متوفر',
+        value: safeFastingGlucose ? safeToFixed(safeFastingGlucose, 1) : 'غير متوفر',
         unit: 'mg/dL',
         trend: glucoseTrend.trend,
-        trendValue: `${glucoseTrend.percentage.toFixed(1)}%`,
+        trendValue: `${safeToFixed(glucoseTrend.percentage, 1)}%`,
         icon: '🩸',
-        color: isValueNormal('glucose', latestRecord.labResults.fastingGlucose) ? 'text-blue-600' : 'text-orange-600',
-        bgColor: isValueNormal('glucose', latestRecord.labResults.fastingGlucose) ? 'bg-blue-50' : 'bg-orange-50'
+        color: isValueNormal('glucose', safeFastingGlucose) ? 'text-blue-600' : 'text-orange-600',
+        bgColor: isValueNormal('glucose', safeFastingGlucose) ? 'bg-blue-50' : 'bg-orange-50'
       },
       {
         title: 'الهيموجلوبين',
-        value: latestRecord.labResults.hb?.toFixed(1) || 'غير متوفر',
+        value: safeHb ? safeToFixed(safeHb, 1) : 'غير متوفر',
         unit: 'g/dL',
         trend: hbTrend.trend,
-        trendValue: `${hbTrend.percentage.toFixed(1)}%`,
+        trendValue: `${safeToFixed(hbTrend.percentage, 1)}%`,
         icon: '🔬',
-        color: isValueNormal('hb', latestRecord.labResults.hb) ? 'text-teal-600' : 'text-yellow-600',
-        bgColor: isValueNormal('hb', latestRecord.labResults.hb) ? 'bg-teal-50' : 'bg-yellow-50'
+        color: isValueNormal('hb', safeHb) ? 'text-teal-600' : 'text-yellow-600',
+        bgColor: isValueNormal('hb', safeHb) ? 'bg-teal-50' : 'bg-yellow-50'
       }
     ];
   }, [latestRecord, chartData]);
@@ -781,229 +806,4 @@ const DashboardPage: React.FC<{ navigate: (page: Page) => void }> = ({ navigate 
                     <span className="text-2xl">
                       {record.aiResponse?.riskScores?.overallRisk && record.aiResponse.riskScores.overallRisk >= 0.75 ? '🔴' :
                        record.aiResponse?.riskScores?.overallRisk && record.aiResponse.riskScores.overallRisk >= 0.5 ? '🟡' :
-                       record.aiResponse?.riskScores?.overallRisk && record.aiResponse.riskScores.overallRisk >= 0.25 ? '🔵' : '🟢'}
-                    </span>
-                    <div>
-                      <p className="font-bold text-gray-800">
-                        {record.timestamp.toLocaleDateString('ar-EG', { 
-                          weekday: 'long',
-                          year: 'numeric', 
-                          month: 'long', 
-                          day: 'numeric' 
-                        })}
-                      </p>
-                      <p className="text-sm text-gray-500">
-                        {record.timestamp.toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' })}
-                      </p>
-                    </div>
-                  </div>
-                  
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-3">
-                    <div className="bg-white p-2 rounded border border-gray-200">
-                      <p className="text-xs text-gray-500 mb-1">الوزن</p>
-                      <p className="font-bold text-purple-600">{record.measurementData.currentWeight} كجم</p>
-                    </div>
-                    {record.labResults.systolicBp && record.labResults.diastolicBp && (
-                      <div className="bg-white p-2 rounded border border-gray-200">
-                        <p className="text-xs text-gray-500 mb-1">ضغط الدم</p>
-                        <p className="font-bold text-pink-600">
-                          {record.labResults.systolicBp}/{record.labResults.diastolicBp}
-                        </p>
-                      </div>
-                    )}
-                    {record.labResults.fastingGlucose && (
-                      <div className="bg-white p-2 rounded border border-gray-200">
-                        <p className="text-xs text-gray-500 mb-1">السكر</p>
-                        <p className="font-bold text-green-600">{record.labResults.fastingGlucose}</p>
-                      </div>
-                    )}
-                    {record.labResults.hb && (
-                      <div className="bg-white p-2 rounded border border-gray-200">
-                        <p className="text-xs text-gray-500 mb-1">الهيموجلوبين</p>
-                        <p className="font-bold text-orange-600">{record.labResults.hb}</p>
-                      </div>
-                    )}
-                  </div>
-
-                  {record.aiResponse?.brief_summary && (
-                    <div className="mt-3 p-3 bg-blue-50 rounded-lg border-r-4 border-blue-400">
-                      <p className="text-sm text-gray-700">{record.aiResponse.brief_summary}</p>
-                    </div>
-                  )}
-                </div>
-
-                <div className="text-right">
-                  <div className={`px-3 py-1 rounded-full text-xs font-bold ${
-                    record.aiResponse?.riskScores?.overallRisk && record.aiResponse.riskScores.overallRisk >= 0.75 
-                      ? 'bg-red-100 text-red-700'
-                      : record.aiResponse?.riskScores?.overallRisk && record.aiResponse.riskScores.overallRisk >= 0.5
-                      ? 'bg-yellow-100 text-yellow-700'
-                      : record.aiResponse?.riskScores?.overallRisk && record.aiResponse.riskScores.overallRisk >= 0.25
-                      ? 'bg-blue-100 text-blue-700'
-                      : 'bg-green-100 text-green-700'
-                  }`}>
-                    {getRiskLabel(record.aiResponse?.riskScores?.overallRisk)}
-                  </div>
-                </div>
-              </div>
-            </div>
-          ))}
-        </div>
-      </Card>
-
-      {/* Summary & Insights */}
-      {userRecords.length >= 3 && (
-        <Card title="💡 رؤى وملاحظات">
-          <div className="space-y-4">
-            {/* Weight Trend Insight */}
-            {(() => {
-              const weights = chartData.map(d => d.weight);
-              const trend = calculateTrend(weights);
-              const weightChange = weights[weights.length - 1] - weights[0];
-              
-              return (
-                <div className="bg-purple-50 border-r-4 border-purple-500 p-4 rounded-lg">
-                  <div className="flex items-start gap-3">
-                    <span className="text-3xl">⚖️</span>
-                    <div>
-                      <p className="font-bold text-gray-800 mb-1">تغير الوزن</p>
-                      <p className="text-sm text-gray-700">
-                        {Math.abs(weightChange) < 0.5 
-                          ? 'وزنك مستقر تقريباً خلال الفترة المختارة.' 
-                          : weightChange > 0
-                          ? `زاد وزنك بمقدار ${weightChange.toFixed(1)} كجم خلال الفترة المختارة.`
-                          : `انخفض وزنك بمقدار ${Math.abs(weightChange).toFixed(1)} كجم خلال الفترة المختارة.`
-                        }
-                      </p>
-                    </div>
-                  </div>
-                </div>
-              );
-            })()}
-
-            {/* Blood Pressure Insight */}
-            {(() => {
-              const systolicValues = chartData.map(d => d.systolicBp).filter((v): v is number => v !== undefined);
-              if (systolicValues.length === 0) return null;
-              
-              const avgSystolic = systolicValues.reduce((a, b) => a + b, 0) / systolicValues.length;
-              const isNormal = avgSystolic >= 90 && avgSystolic <= 140;
-              
-              return (
-                <div className={`border-r-4 p-4 rounded-lg ${
-                  isNormal ? 'bg-green-50 border-green-500' : 'bg-red-50 border-red-500'
-                }`}>
-                  <div className="flex items-start gap-3">
-                    <span className="text-3xl">❤️</span>
-                    <div>
-                      <p className="font-bold text-gray-800 mb-1">ضغط الدم</p>
-                      <p className="text-sm text-gray-700">
-                        متوسط ضغطك الانقباضي خلال الفترة المختارة: {avgSystolic.toFixed(0)} {' '}
-                        {isNormal 
-                          ? '✅ ضمن المعدل الطبيعي.' 
-                          : avgSystolic > 140 
-                          ? '⚠️ أعلى من الطبيعي، يُنصح بمراجعة الطبيب.'
-                          : '⚠️ أقل من الطبيعي، يُنصح بمراجعة الطبيب.'
-                        }
-                      </p>
-                    </div>
-                  </div>
-                </div>
-              );
-            })()}
-
-            {/* Glucose Insight */}
-            {(() => {
-              const glucoseValues = chartData.map(d => d.glucose).filter((v): v is number => v !== undefined);
-              if (glucoseValues.length === 0) return null;
-              
-              const avgGlucose = glucoseValues.reduce((a, b) => a + b, 0) / glucoseValues.length;
-              const isNormal = avgGlucose >= 70 && avgGlucose <= 100;
-              
-              return (
-                <div className={`border-r-4 p-4 rounded-lg ${
-                  isNormal ? 'bg-blue-50 border-blue-500' : 'bg-orange-50 border-orange-500'
-                }`}>
-                  <div className="flex items-start gap-3">
-                    <span className="text-3xl">🩸</span>
-                    <div>
-                      <p className="font-bold text-gray-800 mb-1">سكر الدم</p>
-                      <p className="text-sm text-gray-700">
-                        متوسط سكر الدم (صائم) خلال الفترة المختارة: {avgGlucose.toFixed(0)} mg/dL {' '}
-                        {isNormal 
-                          ? '✅ ضمن المعدل الطبيعي.' 
-                          : avgGlucose > 100 
-                          ? '⚠️ أعلى من الطبيعي، يُنصح بمراجعة الطبيب للمتابعة.'
-                          : '⚠️ أقل من الطبيعي، يُنصح بمراجعة الطبيب.'
-                        }
-                      </p>
-                    </div>
-                  </div>
-                </div>
-              );
-            })()}
-
-            {/* Overall Risk Trend */}
-            {(() => {
-              const riskScores = chartData
-                .map(d => d.overallRisk)
-                .filter((v): v is number => v !== undefined)
-                .map(v => v / 100);
-              
-              if (riskScores.length < 2) return null;
-              
-              const trend = calculateTrend(riskScores);
-              const latestRisk = riskScores[riskScores.length - 1];
-              
-              return (
-                <div className={`border-r-4 p-4 rounded-lg ${
-                  trend.trend === 'down' ? 'bg-green-50 border-green-500' :
-                  trend.trend === 'up' ? 'bg-red-50 border-red-500' :
-                  'bg-gray-50 border-gray-500'
-                }`}>
-                  <div className="flex items-start gap-3">
-                    <span className="text-3xl">
-                      {trend.trend === 'down' ? '📉' : trend.trend === 'up' ? '📈' : '➡️'}
-                    </span>
-                    <div>
-                      <p className="font-bold text-gray-800 mb-1">اتجاه مستوى الخطورة</p>
-                      <p className="text-sm text-gray-700">
-                        {trend.trend === 'down' 
-                          ? `تحسن ملحوظ! انخفض مستوى الخطورة بنسبة ${trend.percentage.toFixed(1)}% منذ آخر قراءة. استمري على هذا النهج! 🎉`
-                          : trend.trend === 'up'
-                          ? `ارتفع مستوى الخطورة بنسبة ${trend.percentage.toFixed(1)}% منذ آخر قراءة. يُنصح بمراجعة الطبيب للمتابعة. ⚠️`
-                          : 'مستوى الخطورة مستقر. استمري في المتابعة الدورية.'
-                        }
-                      </p>
-                    </div>
-                  </div>
-                </div>
-              );
-            })()}
-          </div>
-        </Card>
-      )}
-
-      {/* Action Buttons */}
-      <div className="flex flex-wrap gap-4 justify-center">
-        <Button 
-          onClick={() => navigate(Page.Assessment)}
-          className="inline-flex items-center gap-2 bg-gradient-to-r from-brand-pink to-purple-500"
-        >
-          <span>📝</span>
-          <span>إضافة تقييم جديد</span>
-        </Button>
-        <Button 
-          onClick={() => navigate(Page.History)}
-          variant="secondary"
-          className="inline-flex items-center gap-2"
-        >
-          <span>📚</span>
-          <span>عرض السجل الكامل</span>
-        </Button>
-      </div>
-    </div>
-  );
-};
-
-export default DashboardPage;
+                       record.aiResponse?.riskScores?.overallRisk && record
