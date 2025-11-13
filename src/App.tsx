@@ -1,49 +1,54 @@
-import React, { useState, useCallback } from 'react';
-import { Page, User } from './types';
-// Fix: Import useUser from its correct location in hooks/useUser.ts
-import { UserProvider } from './context/UserContext';
-import { useUser } from './hooks/useUser';
-import LoginPage from './pages/LoginPage';
-import HomePage from './pages/HomePage';
-import AssessmentPage from './pages/AssessmentPage';
-import ChatbotPage from './pages/ChatbotPage';
-import DashboardPage from './pages/DashboardPage';
-import FetalMovementCounterPage from './pages/FetalMovementCounterPage';
-import WeeklyGuidePage from './pages/WeeklyGuidePage';
-import AdminDashboardPage from './pages/AdminDashboardPage';
+import React, { useState, useCallback, Suspense } from 'react';
+import { Page, Role } from './types';
+import { UserProvider, useUser } from './context/UserContext';
+import LoadingSpinner from './components/LoadingSpinner';
 
-const PAGE_TITLES: { [key in Page]: string } = {
-  [Page.Login]: 'تسجيل الدخول',
-  [Page.Home]: 'الصفحة الرئيسية',
-  [Page.Assessment]: 'التقييم الشامل',
-  [Page.Chatbot]: 'المساعد الذكي (شات)',
-  [Page.Dashboard]: 'لوحة المتابعة الصحية',
-  [Page.FetalMovement]: 'عداد حركة الجنين',
-  [Page.WeeklyGuide]: 'الدليل الأسبوعي',
-  [Page.AdminDashboard]: 'لوحة تحكم المسؤول',
-};
+// (هذه الملفات من خطة الأسبوع 3، ولكن سنستخدمها هنا)
+const LoginPage = React.lazy(() => import('./pages/LoginPage'));
+const HomePage = React.lazy(() => import('./pages/HomePage'));
+const AssessmentPage = React.lazy(() => import('./pages/AssessmentPage'));
+const ChatbotPage = React.lazy(() => import('./pages/ChatbotPage'));
+const DashboardPage = React.lazy(() => import('./pages/DashboardPage'));
+const FetalMovementCounterPage = React.lazy(() => import('./pages/FetalMovementCounterPage'));
+const WeeklyGuidePage = React.lazy(() => import('./pages/WeeklyGuidePage'));
+const AdminDashboardPage = React.lazy(() => import('./pages/AdminDashboardPage'));
 
-
+// ---------------------------------
+// 🚨 (1.4) المكون الجديد الذي يعالج التحميل
+// ---------------------------------
 const AppContent: React.FC = () => {
   const [currentPage, setCurrentPage] = useState<Page>(Page.Home);
-  const { user, logout } = useUser();
+  const { user, logout, authLoading } = useUser(); // <-- إضافة authLoading
 
   const navigate = useCallback((page: Page) => {
     setCurrentPage(page);
   }, []);
-  
+
   const handleLogout = () => {
     logout();
     navigate(Page.Login);
   };
 
+  // 🚨 (1.4) عرض شاشة تحميل أثناء التحقق من المستخدم
+  if (authLoading) {
+    return (
+      <div className="min-h-screen bg-brand-pink-light flex items-center justify-center">
+        <LoadingSpinner message="جارٍ التحقق من المستخدم..." />
+      </div>
+    );
+  }
+
+  // 🚨 (1.4) عرض صفحة الدخول إذا لم يكن هناك مستخدم
   if (!user) {
-    return <LoginPage />;
+    // استخدام Suspense لصفحة الدخول
+    return (
+      <Suspense fallback={<LoadingSpinner message="جارٍ التحميل..." />}>
+        <LoginPage navigate={navigate} /> 
+      </Suspense>
+    );
   }
   
-  const pageTitle = PAGE_TITLES[currentPage] || 'مساعد الحمل الذكي';
-
-
+  // ... (هذا الكود يبقى كما هو)
   const renderPage = () => {
     switch (currentPage) {
       case Page.Home:
@@ -66,24 +71,28 @@ const AppContent: React.FC = () => {
   };
 
   return (
-    <div className="bg-brand-pink-light min-h-screen text-brand-gray-dark font-sans">
+    <div className="bg-brand-pink-light min-h-screen font-sans">
       <header className="bg-brand-white shadow-md p-4 flex justify-between items-center">
-         <div>
-          <h1 className="text-2xl font-bold text-brand-pink-dark">مساعد الحمل الذكي</h1>
-          {currentPage !== Page.Home && <p className="text-sm text-gray-500">{pageTitle}</p>}
-        </div>
-        <button onClick={handleLogout} className="bg-brand-pink text-white py-2 px-4 rounded-lg hover:bg-brand-pink-dark transition-colors">
+        <h1 className="text-2xl font-bold text-brand-pink-dark">مساعد الحمل الذكي</h1>
+        <button 
+          onClick={handleLogout} 
+          className="bg-brand-pink text-white py-2 px-4 rounded-lg hover:bg-brand-pink-dark transition-colors"
+        >
           تسجيل الخروج
         </button>
       </header>
       <main className="p-4 sm:p-6 md:p-8">
-        {renderPage()}
+        {/* (Task 3.5) استخدام Suspense لتحميل الصفحات */}
+        <Suspense fallback={<LoadingSpinner message="جارٍ تحميل الصفحة..." />}>
+          {renderPage()}
+        </Suspense>
       </main>
     </div>
   );
 };
+// ---------------------------------
 
-
+// المكون الرئيسي App (الآن يغلف فقط)
 const App: React.FC = () => {
   return (
     <UserProvider>

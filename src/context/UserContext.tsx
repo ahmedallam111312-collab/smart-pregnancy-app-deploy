@@ -1,29 +1,30 @@
-import React, { createContext, useState, ReactNode, useMemo, useEffect } from 'react';
+import React, { createContext, useState, ReactNode, useMemo, useEffect, useContext } from 'react';
 import { User, Role } from '../types';
-// 🚨 الإضافات الجديدة من Firebase
 import { onAuthStateChanged, signOut } from 'firebase/auth';
 import { db, auth } from '../services/firebase'; 
 import { doc, getDoc } from 'firebase/firestore'; 
 
 interface UserContextType {
   user: User | null;
-  // 🚨 1. تعديل التوقيع لقبول 'name'
   login: (id: string, role: Role, name?: string) => void;
   logout: () => void;
-  isLoadingAuth: boolean; 
+  authLoading: boolean; // 🚨 (1.4) الحالة الجديدة
 }
 
+// 🚨 (مهم) تعديل useUser ليستخدم السياق
 export const UserContext = createContext<UserContextType | undefined>(undefined);
+export const useUser = () => {
+    const context = useContext(UserContext);
+    if (context === undefined) {
+        throw new Error('useUser must be used within a UserProvider');
+    }
+    return context;
+};
+// ---------------------------------
 
-interface UserProviderProps {
-  children: ReactNode;
-}
-
-// 🚨 دالة مساعدة لجلب بيانات المستخدم (الاسم والدور) من Firestore
 const fetchUserData = async (userId: string) => {
     const userDocRef = doc(db, "users", userId);
     const userDoc = await getDoc(userDocRef);
-
     if (userDoc.exists()) {
         const data = userDoc.data();
         return {
@@ -31,21 +32,17 @@ const fetchUserData = async (userId: string) => {
             role: (data.role as Role) || Role.Patient,
         };
     }
-    // إذا لم يتم العثور على سجل في Firestore (مستخدم قديم)، نرجع دور المريض الافتراضي
     return { name: undefined, role: Role.Patient }; 
 };
 
-
-export const UserProvider: React.FC<UserProviderProps> = ({ children }) => {
+export const UserProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
-  const [isLoadingAuth, setIsLoadingAuth] = useState(true);
+  const [authLoading, setAuthLoading] = useState(true); // 🚨 (1.4) البدء بـ true
 
-  // 🚨 2. تعديل دالة login لحفظ الاسم
   const login = (id: string, role: Role, name?: string) => {
     setUser({ id, role, name });
   };
 
-  // 🚨 3. دالة تسجيل الخروج باستخدام Firebase
   const handleLogout = async () => {
     try {
         await signOut(auth); 
@@ -55,39 +52,27 @@ export const UserProvider: React.FC<UserProviderProps> = ({ children }) => {
     }
   };
 
-  // 4. جلب البيانات عند تحميل التطبيق
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
         if (firebaseUser) {
-            // جلب الاسم والدور من Firestore
             const userData = await fetchUserData(firebaseUser.uid);
-            
-            // تسجيل الدخول في السياق باستخدام البيانات المسترجعة
             setUser({
                 id: firebaseUser.uid,
                 role: userData.role,
-                name: userData.name, // 🚨 حفظ الاسم
+                name: userData.name,
             });
         } else {
             setUser(null);
         }
-        setIsLoadingAuth(false);
+        setAuthLoading(false); // 🚨 (1.4) إيقاف التحميل بعد التحقق
     });
-
     return () => unsubscribe();
   }, []); 
 
-  const value = useMemo(() => ({ user, login, logout: handleLogout, isLoadingAuth }), [user, isLoadingAuth]);
+  const value = useMemo(() => ({ user, login, logout: handleLogout, authLoading }), [user, authLoading]);
 
-  // شاشة تحميل مؤقتة
-  if (isLoadingAuth) {
-    return (
-        <div className="flex justify-center items-center min-h-screen bg-brand-pink-light">
-            <h1 className="text-xl text-brand-pink-dark">جارِ التحقق من جلسة المستخدم...</h1>
-        </div>
-    );
-  }
-
+  // 🚨 (ملاحظة) سنقوم بإزالة شاشة التحميل من هنا ونقلها إلى App.tsx
+  // if (authLoading) { ... }
 
   return (
     <UserContext.Provider value={value}>

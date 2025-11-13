@@ -1,21 +1,29 @@
+// src/services/firebase.ts
 import { initializeApp } from 'firebase/app';
-import { getAuth } from 'firebase/auth'; // لخدمة تسجيل الدخول
-import { getFirestore } from 'firebase/firestore'; // لخدمة قاعدة البيانات
+import { getFirestore } from 'firebase/firestore';
+import { getAuth } from 'firebase/auth';
+import { getStorage } from 'firebase/storage';
 
-// مفاتيح الربط التي أرسلتها
+// Firebase configuration from environment variables
 const firebaseConfig = {
-  apiKey: "AIzaSyB-10vXz8qQEt0v6yLREqGSMqVh_XccTsI",
-  authDomain: "smart-pregnancy-app.firebaseapp.com",
-  projectId: "smart-pregnancy-app",
-  storageBucket: "smart-pregnancy-app.firebasestorage.app",
-  messagingSenderId: "937706081037",
-  appId: "1:937706081037:web:2cc9ef2122610969fdbe44",
-  measurementId: "G-21SRYE81GN"
+  apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
+  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
+  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
+  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
+  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
+  appId: import.meta.env.VITE_FIREBASE_APP_ID,
+  measurementId: import.meta.env.VITE_FIREBASE_MEASUREMENT_ID
 };
 
-// تهيئة تطبيق Firebase
+// Log for debugging (you'll see this in browser console)
+console.log('🔥 Firebase initialized with project:', firebaseConfig.projectId);
+
+// Initialize Firebase
 const app = initializeApp(firebaseConfig);
 
-// تصدير خدمات Firebase التي سيستخدمها تطبيقنا
-export const auth = getAuth(app); // خدمة التوثيق (Authentication)
-export const db = getFirestore(app); // خدمة قاعدة البيانات (Firestore)
+// Initialize Firebase services
+export const db = getFirestore(app);
+export const auth = getAuth(app);
+export const storage = getStorage(app);
+
+export default app;
