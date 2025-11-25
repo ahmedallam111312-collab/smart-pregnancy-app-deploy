@@ -98,7 +98,7 @@ const isValueNormal = (type: string, value?: number): boolean => {
     case 'diastolicBp': return value >= 60 && value <= 90;
     case 'glucose': return value >= 70 && value <= 100;
     case 'hb': return value >= 11 && value <= 15;
-    case 'weight': return true; // Weight is relative
+    case 'weight': return true;
     default: return true;
   }
 };
@@ -251,14 +251,12 @@ const DashboardPage: React.FC<{ navigate: (page: Page) => void }> = ({ navigate 
   const statistics = useMemo((): StatCard[] => {
     if (!latestRecord) return [];
 
-    // Safe number conversions
     const safeCurrentWeight = safeNumber(latestRecord.measurementData.currentWeight);
     const safeSystolicBp = safeGetNumber(latestRecord.labResults.systolicBp);
     const safeDiastolicBp = safeGetNumber(latestRecord.labResults.diastolicBp);
     const safeFastingGlucose = safeGetNumber(latestRecord.labResults.fastingGlucose);
     const safeHb = safeGetNumber(latestRecord.labResults.hb);
 
-    // Safe trend calculations
     const weights = chartData.map(d => d.weight).filter(Boolean);
     const weightTrend = calculateTrend(weights);
 
@@ -795,15 +793,149 @@ const DashboardPage: React.FC<{ navigate: (page: Page) => void }> = ({ navigate 
       {/* Records Timeline */}
       <Card title="📋 سجل الزيارات">
         <div className="space-y-3 max-h-96 overflow-y-auto">
-          {userRecords.slice().reverse().map((record, index) => (
-            <div 
-              key={record.id || index}
-              className="bg-gradient-to-r from-gray-50 to-white border border-gray-200 rounded-lg p-4 hover:shadow-md transition-all"
-            >
-              <div className="flex items-start justify-between gap-4">
-                <div className="flex-1">
-                  <div className="flex items-center gap-3 mb-2">
-                    <span className="text-2xl">
-                      {record.aiResponse?.riskScores?.overallRisk && record.aiResponse.riskScores.overallRisk >= 0.75 ? '🔴' :
-                       record.aiResponse?.riskScores?.overallRisk && record.aiResponse.riskScores.overallRisk >= 0.5 ? '🟡' :
-                       record.aiResponse?.riskScores?.overallRisk && record
+          {userRecords.slice().reverse().map((record, index) => {
+            const riskScore = record.aiResponse?.riskScores?.overallRisk || 0;
+            const riskEmoji = riskScore >= 0.75 ? '🔴' : 
+                             riskScore >= 0.5 ? '🟡' : 
+                             riskScore >= 0.25 ? '🔵' : '🟢';
+            
+            return (
+              <div 
+                key={record.id || index}
+                className="bg-gradient-to-r from-gray-50 to-white border border-gray-200 rounded-lg p-4 hover:shadow-md transition-all"
+              >
+                <div className="flex items-start justify-between gap-4">
+                  <div className="flex-1">
+                    <div className="flex items-center gap-3 mb-2">
+                      <span className="text-2xl">{riskEmoji}</span>
+                      <div>
+                        <p className="font-bold text-gray-800">
+                          {record.timestamp.toLocaleDateString('ar-EG', { 
+                            year: 'numeric', 
+                            month: 'long', 
+                            day: 'numeric' 
+                          })}
+                        </p>
+                        <p className="text-sm text-gray-500">
+                          مستوى الخطورة: <span className="font-semibold">{getRiskLabel(riskScore)}</span>
+                        </p>
+                      </div>
+                    </div>
+                    
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-3">
+                      <div className="bg-white p-2 rounded-lg border border-gray-200">
+                        <p className="text-xs text-gray-500">الوزن</p>
+                        <p className="font-bold text-gray-800">
+                          {safeToFixed(record.measurementData.currentWeight, 1)} كجم
+                        </p>
+                      </div>
+                      <div className="bg-white p-2 rounded-lg border border-gray-200">
+                        <p className="text-xs text-gray-500">ضغط الدم</p>
+                        <p className="font-bold text-gray-800">
+                          {record.labResults.systolicBp && record.labResults.diastolicBp
+                            ? `${record.labResults.systolicBp}/${record.labResults.diastolicBp}`
+                            : 'غ.م'}
+                        </p>
+                      </div>
+                      <div className="bg-white p-2 rounded-lg border border-gray-200">
+                        <p className="text-xs text-gray-500">سكر الدم</p>
+                        <p className="font-bold text-gray-800">
+                          {record.labResults.fastingGlucose 
+                            ? safeToFixed(record.labResults.fastingGlucose, 1) 
+                            : 'غ.م'}
+                        </p>
+                      </div>
+                      <div className="bg-white p-2 rounded-lg border border-gray-200">
+                        <p className="text-xs text-gray-500">الهيموجلوبين</p>
+                        <p className="font-bold text-gray-800">
+                          {record.labResults.hb 
+                            ? safeToFixed(record.labResults.hb, 1) 
+                            : 'غ.م'}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </Card>
+
+      {/* Summary Section */}
+      <Card title="📈 ملخص البيانات">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div className="space-y-3">
+            <h3 className="font-bold text-gray-800 text-lg mb-4">📊 إحصائيات عامة</h3>
+            <div className="flex justify-between items-center p-3 bg-gray-50 rounded-lg">
+              <span className="text-gray-600">عدد التقييمات:</span>
+              <span className="font-bold text-xl text-brand-pink">{userRecords.length}</span>
+            </div>
+            <div className="flex justify-between items-center p-3 bg-gray-50 rounded-lg">
+              <span className="text-gray-600">أول تقييم:</span>
+              <span className="font-bold text-gray-800">
+                {userRecords[0]?.timestamp.toLocaleDateString('ar-EG', { 
+                  year: 'numeric', 
+                  month: 'short', 
+                  day: 'numeric' 
+                })}
+              </span>
+            </div>
+            <div className="flex justify-between items-center p-3 bg-gray-50 rounded-lg">
+              <span className="text-gray-600">آخر تقييم:</span>
+              <span className="font-bold text-gray-800">
+                {latestRecord?.timestamp.toLocaleDateString('ar-EG', { 
+                  year: 'numeric', 
+                  month: 'short', 
+                  day: 'numeric' 
+                })}
+              </span>
+            </div>
+          </div>
+          
+          <div className="space-y-3">
+            <h3 className="font-bold text-gray-800 text-lg mb-4">💡 توصيات</h3>
+            <div className="p-4 bg-blue-50 rounded-lg border-r-4 border-blue-500">
+              <p className="text-sm text-gray-700">
+                • قومي بإجراء التقييم بشكل منتظم لمتابعة التقدم
+              </p>
+            </div>
+            <div className="p-4 bg-green-50 rounded-lg border-r-4 border-green-500">
+              <p className="text-sm text-gray-700">
+                • راقبي التغيرات في القياسات الحيوية بانتظام
+              </p>
+            </div>
+            <div className="p-4 bg-purple-50 rounded-lg border-r-4 border-purple-500">
+              <p className="text-sm text-gray-700">
+                • استشيري الطبيب عند ملاحظة أي تغييرات غير طبيعية
+              </p>
+            </div>
+          </div>
+        </div>
+      </Card>
+
+      {/* Action Buttons */}
+      <Card>
+        <div className="flex flex-col sm:flex-row gap-4 justify-center">
+          <Button 
+            onClick={() => navigate(Page.Assessment)} 
+            className="inline-flex items-center justify-center gap-2 bg-gradient-to-r from-brand-pink to-purple-500"
+          >
+            <span>📝</span>
+            <span>إجراء تقييم جديد</span>
+          </Button>
+          <Button 
+            onClick={() => navigate(Page.History)} 
+            variant="secondary"
+            className="inline-flex items-center justify-center gap-2"
+          >
+            <span>📜</span>
+            <span>عرض السجل الكامل</span>
+          </Button>
+        </div>
+      </Card>
+    </div>
+  );
+};
+
+export default DashboardPage;

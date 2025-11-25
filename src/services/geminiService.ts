@@ -1,6 +1,9 @@
+// src/services/geminiService.ts
+// Updated to work with structured medicalKB using @google/genai package
+
 import { GoogleGenAI, Type, Chat } from "@google/genai";
 import { PatientRecord, LabResults, AIResponse, RiskScores, SymptomsPayload } from '../types';
-import { MEDICAL_KB } from '../constants/medicalKB';
+import MedicalKB from '../constants/medicalKB';
 
 // -----------------------------------------------------------------
 // Configuration & Initialization
@@ -88,14 +91,6 @@ const AnalysisResponseSchema = {
 // -----------------------------------------------------------------
 
 /**
- * Calculates BMI (Body Mass Index)
- */
-const calculateBMI = (weight: number, heightInCm: number): number => {
-  const heightInM = heightInCm / 100;
-  return weight / (heightInM * heightInM);
-};
-
-/**
  * Generates patient history summary for AI context
  */
 const generateHistorySummary = (history: PatientRecord[]): string => {
@@ -133,24 +128,26 @@ const generateHistorySummary = (history: PatientRecord[]): string => {
 };
 
 /**
- * Formats symptoms for AI analysis
+ * Formats symptoms for AI analysis using KB
  */
 const formatSymptomsForAI = (symptoms: SymptomsPayload): string => {
   const symptomsList: string[] = [];
 
-  if (symptoms.headache) symptomsList.push('Headache');
-  if (symptoms.visionChanges) symptomsList.push('Vision changes');
-  if (symptoms.upperAbdominalPain) symptomsList.push('Upper abdominal pain');
-  if (symptoms.swelling) symptomsList.push('Swelling/edema');
-  if (symptoms.excessiveThirst) symptomsList.push('Excessive thirst');
-  if (symptoms.frequentUrination) symptomsList.push('Frequent urination');
-  if (symptoms.fatigue) symptomsList.push('Fatigue');
-  if (symptoms.dizziness) symptomsList.push('Dizziness');
-  if (symptoms.shortnessOfBreath) symptomsList.push('Shortness of breath');
+  Object.entries(symptoms).forEach(([key, value]) => {
+    if (key === 'otherSymptoms') {
+      if (value) {
+        symptomsList.push(`Other: ${value}`);
+      }
+      return;
+    }
 
-  if (symptoms.otherSymptoms) {
-    symptomsList.push(`Other: ${symptoms.otherSymptoms}`);
-  }
+    if (value === true) {
+      const symptom = MedicalKB.SYMPTOMS[key];
+      if (symptom) {
+        symptomsList.push(`${symptom.labelEn} (${symptom.severity} severity)`);
+      }
+    }
+  });
 
   return symptomsList.length > 0
     ? symptomsList.join(', ')
@@ -200,7 +197,7 @@ export const mockOcrService = async (file: File): Promise<string> => {
 // Patient Data Analysis
 // -----------------------------------------------------------------
 interface AnalysisInput {
-  personalInfo: { name: string; age: number };
+  personalInfo: { name: string; age: number; pregnancyWeek?: number };
   pregnancyHistory: { g: number; p: number; a: number };
   measurementData: {
     height: number;
@@ -214,46 +211,104 @@ interface AnalysisInput {
 }
 
 /**
- * Analyzes patient data using Gemini AI
+ * Analyzes patient data using Gemini AI with KB-driven context
  */
 export const analyzePatientData = async (
   currentData: AnalysisInput,
   history: PatientRecord[]
 ): Promise<AIResponse> => {
-  console.log('🔬 Starting patient data analysis...');
+  console.log('🔬 Starting KB-driven patient data analysis...');
 
   try {
-    // Generate context
+    // Generate context using KB functions
     const historySummary = generateHistorySummary(history);
     const symptomsText = formatSymptomsForAI(currentData.symptoms);
-    const bmi = calculateBMI(
-      currentData.measurementData.currentWeight,
-      currentData.measurementData.height
+    
+    // Use KB BMI calculation
+    const bmi = MedicalKB.calculateBMI(
+      currentData.measurementData.height,
+      currentData.measurementData.currentWeight
     );
-    const preBMI = calculateBMI(
-      currentData.measurementData.prePregnancyWeight,
-      currentData.measurementData.height
+    const preBMI = MedicalKB.calculateBMI(
+      currentData.measurementData.height,
+      currentData.measurementData.prePregnancyWeight
     );
+
+    // Get BMI categories from KB
+    const currentBMICategory = bmi ? MedicalKB.getBMICategory(bmi) : null;
+    const preBMICategory = preBMI ? MedicalKB.getBMICategory(preBMI) : null;
+
+    // Get pregnancy week info from KB
+    const weekInfo = currentData.personalInfo.pregnancyWeek 
+      ? MedicalKB.getPregnancyWeekInfo(currentData.personalInfo.pregnancyWeek)
+      : null;
 
     // Calculate weight gain
     const weightGain =
       currentData.measurementData.currentWeight -
       currentData.measurementData.prePregnancyWeight;
 
-    // Build comprehensive prompt
+    // Calculate KB-driven risk scores
+    const preeclampsiaRisk = MedicalKB.calculateConditionRisk('preeclampsia', {
+      personalInfo: currentData.personalInfo,
+      pregnancyHistory: currentData.pregnancyHistory,
+      measurementData: currentData.measurementData,
+      symptoms: currentData.symptoms,
+      labResults: currentData.labResults
+    });
+
+    const gdmRisk = MedicalKB.calculateConditionRisk('gdm', {
+      personalInfo: currentData.personalInfo,
+      pregnancyHistory: currentData.pregnancyHistory,
+      measurementData: currentData.measurementData,
+      symptoms: currentData.symptoms,
+      labResults: currentData.labResults
+    });
+
+    const anemiaRisk = MedicalKB.calculateConditionRisk('anemia', {
+      personalInfo: currentData.personalInfo,
+      pregnancyHistory: currentData.pregnancyHistory,
+      measurementData: currentData.measurementData,
+      symptoms: currentData.symptoms,
+      labResults: currentData.labResults
+    });
+
+    // Get red flag symptoms from KB
+    const redFlagSymptoms = MedicalKB.getRedFlagSymptoms()
+      .filter(s => currentData.symptoms[s.key as keyof SymptomsPayload])
+      .map(s => s.labelEn);
+
+    // Assess lab results using KB
+    const labAssessments: string[] = [];
+    Object.entries(MedicalKB.CLINICAL_THRESHOLDS).forEach(([key, threshold]) => {
+      const value = currentData.labResults[threshold.parameter as keyof LabResults];
+      if (value) {
+        const assessment = MedicalKB.assessClinicalParameter(key, value);
+        if (assessment && assessment.status !== 'normal') {
+          labAssessments.push(
+            `${threshold.labelEn}: ${value} ${threshold.unit} (${assessment.status})`
+          );
+        }
+      }
+    });
+
+    // Build comprehensive prompt with KB context
     const prompt = `
 **ROLE:** Expert Obstetrician AI Assistant specializing in high-risk pregnancy assessment
 
 **CONTEXT:** Analyze the health record of a pregnant patient. Base your analysis STRICTLY on the provided data and medical knowledge base. Provide risk assessment and recommendations.
 
 **MEDICAL KNOWLEDGE BASE:**
-${MEDICAL_KB}
+${MedicalKB.MEDICAL_KB_TEXT}
 
 **PATIENT'S CURRENT DATA:**
 
 1. Personal Information:
    - Name: ${currentData.personalInfo.name}
    - Age: ${currentData.personalInfo.age} years
+   - Pregnancy Week: ${currentData.personalInfo.pregnancyWeek || 'Not specified'}
+   ${weekInfo ? `- Trimester: ${weekInfo.trimester}` : ''}
+   ${weekInfo ? `- Fetal Development: ${weekInfo.fetalDevelopmentEn}` : ''}
    - Known Diagnosis: ${currentData.knownDiagnosis ? 'Yes' : 'No'}
 
 2. Pregnancy History:
@@ -263,62 +318,81 @@ ${MEDICAL_KB}
 
 3. Physical Measurements:
    - Height: ${currentData.measurementData.height} cm
-   - Pre-pregnancy Weight: ${currentData.measurementData.prePregnancyWeight} kg (BMI: ${preBMI.toFixed(1)})
-   - Current Weight: ${currentData.measurementData.currentWeight} kg (BMI: ${bmi.toFixed(1)})
+   - Pre-pregnancy Weight: ${currentData.measurementData.prePregnancyWeight} kg
+   - Pre-pregnancy BMI: ${preBMI?.toFixed(1)} (${preBMICategory?.labelEn || 'Unknown'})
+   - Current Weight: ${currentData.measurementData.currentWeight} kg
+   - Current BMI: ${bmi?.toFixed(1)} (${currentBMICategory?.labelEn || 'Unknown'})
    - Weight Gain: ${weightGain > 0 ? '+' : ''}${weightGain.toFixed(1)} kg
 
-4. Reported Symptoms:
+4. Reported Symptoms (${Object.values(currentData.symptoms).filter(v => v === true).length} total):
    ${symptomsText}
+   ${redFlagSymptoms.length > 0 ? `\n⚠️ RED FLAG SYMPTOMS: ${redFlagSymptoms.join(', ')}` : ''}
 
 5. Laboratory Results (Manual Input):
    - Blood Pressure: ${currentData.labResults.systolicBp || 'N/A'}/${currentData.labResults.diastolicBp || 'N/A'} mmHg
    - Fasting Glucose: ${currentData.labResults.fastingGlucose || 'N/A'} mg/dL
    - Hemoglobin: ${currentData.labResults.hb || 'N/A'} g/dL
+   ${labAssessments.length > 0 ? `\n⚠️ ABNORMAL FINDINGS:\n${labAssessments.map(a => `   - ${a}`).join('\n')}` : ''}
 
 6. Laboratory Results (OCR Extracted):
    ${currentData.ocrText || 'No OCR data available'}
+
+**KNOWLEDGE-BASE CALCULATED RISK SCORES:**
+- Preeclampsia Risk: ${(preeclampsiaRisk.score * 100).toFixed(0)}% (${preeclampsiaRisk.level})
+  Factors: ${preeclampsiaRisk.factors.join(', ') || 'None identified'}
+- Gestational Diabetes Risk: ${(gdmRisk.score * 100).toFixed(0)}% (${gdmRisk.level})
+  Factors: ${gdmRisk.factors.join(', ') || 'None identified'}
+- Anemia Risk: ${(anemiaRisk.score * 100).toFixed(0)}% (${anemiaRisk.level})
+  Factors: ${anemiaRisk.factors.join(', ') || 'None identified'}
 
 **PATIENT'S HISTORICAL RECORDS:**
 ${historySummary}
 
 **ANALYSIS REQUIREMENTS:**
 
-1. Calculate risk scores (0.0 to 1.0) for:
-   - Overall pregnancy risk
-   - Preeclampsia
-   - Gestational Diabetes (GDM)
-   - Anemia
+1. Use the KB-calculated risk scores as a baseline, but adjust based on:
+   - Clinical judgment
+   - Combination of risk factors
+   - Severity of symptoms
+   - Lab result patterns
+   - Historical trends
 
-2. Consider ALL risk factors:
+2. Your risk scores should be close to the KB calculations unless there's clinical justification to adjust them.
+
+3. Consider ALL risk factors:
    - Maternal age (${currentData.personalInfo.age} years)
    - BMI and weight gain patterns
    - Blood pressure trends
    - Blood glucose levels
    - Hemoglobin levels
-   - Reported symptoms
+   - Reported symptoms (especially red flags)
    - Pregnancy history
    - Previous visit trends
 
-3. Provide:
+4. Provide:
    - Brief summary (2-3 sentences) in ARABIC
-   - Detailed report with recommendations in ARABIC
+   - Detailed report with recommendations in ARABIC, using markdown formatting (##, *, -)
    - Extracted lab values from all sources
 
 **OUTPUT FORMAT:**
 Return ONLY a JSON object. No additional text outside JSON.
 All text fields (brief_summary, detailed_report) MUST be in Arabic.
 
-**CRITICAL:** Ensure risk scores are realistic and evidence-based. Higher scores should only be given when clear risk factors are present.
+**CRITICAL:** 
+- Ensure risk scores are realistic and evidence-based
+- Higher scores should only be given when clear risk factors are present
+- Reference the KB definitions and thresholds in your assessment
+- If red flag symptoms are present, emphasize urgency in your report
 `;
 
     // Call Gemini API
     const response = await ai.models.generateContent({
-      model: "gemini-2.5-flash",
+      model: "gemini-2.0-flash",
       contents: prompt,
       config: {
         responseMimeType: "application/json",
         responseSchema: AnalysisResponseSchema,
-        temperature: 0.3, // Lower temperature for more consistent medical analysis
+        temperature: 0.3,
         topP: 0.8,
         topK: 40
       }
@@ -343,11 +417,16 @@ All text fields (brief_summary, detailed_report) MUST be in Arabic.
     }
 
     console.log('✅ Analysis completed successfully');
-    console.log('📈 Risk Scores:', {
+    console.log('📈 Final Risk Scores:', {
       overall: (result.riskScores.overallRisk * 100).toFixed(1) + '%',
       preeclampsia: (result.riskScores.preeclampsiaRisk * 100).toFixed(1) + '%',
       gdm: (result.riskScores.gdmRisk * 100).toFixed(1) + '%',
       anemia: (result.riskScores.anemiaRisk * 100).toFixed(1) + '%'
+    });
+    console.log('📊 KB Risk Scores (baseline):', {
+      preeclampsia: (preeclampsiaRisk.score * 100).toFixed(1) + '%',
+      gdm: (gdmRisk.score * 100).toFixed(1) + '%',
+      anemia: (anemiaRisk.score * 100).toFixed(1) + '%'
     });
 
     return result;
@@ -355,7 +434,6 @@ All text fields (brief_summary, detailed_report) MUST be in Arabic.
   } catch (error) {
     console.error('❌ Error analyzing patient data:', error);
 
-    // Enhanced error handling
     if (error instanceof SyntaxError) {
       throw new Error('فشل في تحليل استجابة الذكاء الاصطناعي. يرجى المحاولة مرة أخرى.');
     }
@@ -385,11 +463,8 @@ interface ChatInstance {
 }
 
 const chatInstances: Map<string, ChatInstance> = new Map();
-const CHAT_TIMEOUT = 30 * 60 * 1000; // 30 minutes
+const CHAT_TIMEOUT = 30 * 60 * 1000;
 
-/**
- * Cleans up inactive chat instances
- */
 const cleanupInactiveChats = () => {
   const now = Date.now();
   const toDelete: string[] = [];
@@ -406,12 +481,8 @@ const cleanupInactiveChats = () => {
   });
 };
 
-// Run cleanup every 10 minutes
 setInterval(cleanupInactiveChats, 10 * 60 * 1000);
 
-/**
- * Gets or creates chat instance for user
- */
 const getChatInstance = (userId: string, history: PatientRecord[]): Chat => {
   const existing = chatInstances.get(userId);
 
@@ -420,7 +491,6 @@ const getChatInstance = (userId: string, history: PatientRecord[]): Chat => {
     return existing.chat;
   }
 
-  // Create new chat instance
   const historySummary = generateHistorySummary(history);
 
   const systemInstruction = `
@@ -434,7 +504,7 @@ const getChatInstance = (userId: string, history: PatientRecord[]): Chat => {
 
 **KNOWLEDGE BASE:**
 Your medical knowledge is based STRICTLY on the following information:
-${MEDICAL_KB}
+${MedicalKB.MEDICAL_KB_TEXT}
 
 **USER'S HEALTH CONTEXT:**
 ${historySummary}
@@ -464,10 +534,10 @@ ${historySummary}
 `;
 
   const chat = ai.chats.create({
-    model: 'gemini-2.5-flash',
+    model: 'gemini-2.0-flash-exp',
     config: {
       systemInstruction,
-      temperature: 0.7, // More natural conversation
+      temperature: 0.7,
       topP: 0.9,
       topK: 40
     }
@@ -478,13 +548,10 @@ ${historySummary}
     lastActivity: new Date()
   });
 
-  console.log(`💬 Created new chat instance for user: ${userId}`);
+  console.log(`💬 Created new KB-driven chat instance for user: ${userId}`);
   return chat;
 };
 
-/**
- * Sends message and gets streaming response
- */
 export const getChatResponse = async (
   userId: string,
   message: string,
@@ -505,10 +572,8 @@ export const getChatResponse = async (
   } catch (error) {
     console.error('❌ Error getting chat response:', error);
 
-    // Clean up failed instance
     chatInstances.delete(userId);
 
-    // Enhanced error handling
     if (error instanceof Error) {
       if (error.message.includes('API key')) {
         throw new Error('خطأ في مفتاح الوصول. يرجى التواصل مع الدعم الفني.');
@@ -525,9 +590,6 @@ export const getChatResponse = async (
   }
 };
 
-/**
- * Clears chat history for a user
- */
 export const clearChatHistory = (userId: string): boolean => {
   const deleted = chatInstances.delete(userId);
   if (deleted) {
@@ -536,12 +598,8 @@ export const clearChatHistory = (userId: string): boolean => {
   return deleted;
 };
 
-/**
- * Gets active chat count (for monitoring)
- */
 export const getActiveChatCount = (): number => {
   return chatInstances.size;
 };
 
-// Export types for use in other modules
 export type { AnalysisInput };

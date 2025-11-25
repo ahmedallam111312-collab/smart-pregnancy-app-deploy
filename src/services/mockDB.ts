@@ -1,8 +1,8 @@
-import { db } from './firebase'; 
-import { 
-  PatientRecord, 
-  SubmissionTracker, 
-  UserTrustScore, 
+import { db } from './firebase';
+import {
+  PatientRecord,
+  SubmissionTracker,
+  UserTrustScore,
   ReviewQueueItem,
   RateLimitResult,
   PhoneVerification,
@@ -10,21 +10,21 @@ import {
   TrustScoreChange,
   DEFAULT_VALIDATION_CONFIG
 } from '../types';
-import { 
-  collection, 
-  addDoc, 
-  query, 
-  where, 
-  orderBy, 
-  getDocs, 
-  deleteDoc, 
-  doc, 
+import {
+  collection,
+  addDoc,
+  query,
+  where,
+  orderBy,
+  getDocs,
+  deleteDoc,
+  doc,
   getDoc,
   setDoc,
   updateDoc,
   Timestamp,
   limit as firestoreLimit
-} from 'firebase/firestore'; 
+} from 'firebase/firestore';
 
 // ============================================================================
 // COLLECTION NAMES
@@ -43,8 +43,8 @@ const PHONE_VERIFICATIONS_COLLECTION = 'phoneVerifications';
  * Save new patient record with security checks
  */
 export const saveNewPatientRecord = async (record: PatientRecord): Promise<string> => {
-  if (!record.userId) { 
-    throw new Error("Cannot save record: User ID is missing."); 
+  if (!record.userId) {
+    throw new Error("Cannot save record: User ID is missing.");
   }
 
   try {
@@ -95,7 +95,7 @@ export const getPatientRecordsByUserId = async (userId: string): Promise<Patient
     return records;
   } catch (e) {
     console.error('Error fetching records:', e);
-    return []; 
+    return [];
   }
 };
 
@@ -121,9 +121,9 @@ export const getAllPatientRecordsForAdmin = async (): Promise<PatientRecord[]> =
       collection(db, PATIENT_RECORDS_COLLECTION),
       orderBy("timestamp", "desc")
     );
-    
+
     const querySnapshot = await getDocs(q);
-    
+
     const records: PatientRecord[] = querySnapshot.docs.map(doc => {
       const data = doc.data();
       return {
@@ -166,7 +166,7 @@ export const checkSubmissionLimit = async (userId: string): Promise<RateLimitRes
     }
 
     const tracker = trackerDoc.data() as SubmissionTracker;
-    
+
     // Check if blocked
     if (tracker.blocked) {
       return {
@@ -194,7 +194,7 @@ export const checkSubmissionLimit = async (userId: string): Promise<RateLimitRes
     }
 
     // Check 24-hour limit
-    const hoursSinceLastSubmission = 
+    const hoursSinceLastSubmission =
       (now.getTime() - tracker.lastSubmission.getTime()) / (1000 * 60 * 60);
 
     if (hoursSinceLastSubmission < config.cooldownHours) {
@@ -270,9 +270,9 @@ export const updateSubmissionTracker = async (userId: string): Promise<void> => 
     } else {
       // Update existing tracker
       const tracker = trackerDoc.data() as SubmissionTracker;
-      
+
       // Reset counters if needed
-      const hoursSinceLast = 
+      const hoursSinceLast =
         (now.getTime() - tracker.lastSubmission.getTime()) / (1000 * 60 * 60);
       const daysSinceLast = hoursSinceLast / 24;
 
@@ -500,7 +500,7 @@ export const getReviewQueue = async (status?: ReviewStatus): Promise<ReviewQueue
     }
 
     const querySnapshot = await getDocs(q);
-    
+
     return querySnapshot.docs.map(doc => {
       const data = doc.data();
       return {

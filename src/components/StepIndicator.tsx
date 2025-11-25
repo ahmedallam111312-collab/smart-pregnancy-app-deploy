@@ -1,41 +1,29 @@
-
 import React from 'react';
 
 interface StepIndicatorProps {
-  steps: string[];
   currentStep: number;
+  totalSteps: number;
+  labels?: string[] | null;
 }
 
-const StepIndicator: React.FC<StepIndicatorProps> = ({ steps, currentStep }) => {
+const StepIndicator: React.FC<StepIndicatorProps> = ({ currentStep, totalSteps, labels }) => {
+  // Defensive: ensure we always have an array to map over
+  const safeLabels = Array.isArray(labels) && labels.length > 0
+    ? labels
+    : Array.from({ length: totalSteps }, (_, i) => `Step ${i + 1}`);
+
   return (
-    <div className="flex justify-center items-center mb-8 w-full overflow-x-auto p-2">
-      <div className="flex items-center">
-      {steps.map((step, index) => (
-        <React.Fragment key={index}>
-          <div className="flex flex-col items-center">
-            <div
-              className={`w-10 h-10 rounded-full flex items-center justify-center text-lg font-bold transition-colors duration-300 ${
-                index + 1 === currentStep
-                  ? 'bg-brand-pink text-white scale-110'
-                  : index + 1 < currentStep
-                  ? 'bg-brand-pink-dark text-white'
-                  : 'bg-gray-200 text-gray-500'
-              }`}
-            >
-              {index + 1 < currentStep ? '✔' : index + 1}
-            </div>
-            <p className={`mt-2 text-center text-sm ${index + 1 === currentStep ? 'text-brand-pink-dark font-bold' : 'text-gray-600'}`}>
-              {step}
-            </p>
+    <div className="flex items-center gap-3 mb-6">
+      {safeLabels.map((label, idx) => {
+        const stepNum = idx + 1;
+        const isActive = stepNum === currentStep;
+        return (
+          <div key={idx} className={`flex-1 text-center py-2 rounded ${isActive ? 'bg-brand-pink text-white font-bold' : 'bg-white text-gray-600 border'}`}>
+            <div className="text-sm">{label}</div>
+            <div className="text-xs mt-1">{stepNum}/{totalSteps}</div>
           </div>
-          {index < steps.length - 1 && (
-            <div className={`flex-auto border-t-2 transition-colors duration-300 mx-2 w-8 sm:w-16 ${
-              index + 1 < currentStep ? 'border-brand-pink-dark' : 'border-gray-200'
-            }`}></div>
-          )}
-        </React.Fragment>
-      ))}
-      </div>
+        );
+      })}
     </div>
   );
 };
