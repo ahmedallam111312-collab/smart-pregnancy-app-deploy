@@ -1,5 +1,5 @@
-// src/services/deepseekService.ts
-// Updated to work with DeepSeek V3 via OpenRouter API
+// src/services/kimiService.ts
+// Updated to work with Kimi K2 via OpenRouter API (Free tier)
 
 import { PatientRecord, LabResults, AIResponse, RiskScores, SymptomsPayload } from '../types';
 import MedicalKB from '../constants/medicalKB';
@@ -9,7 +9,7 @@ import MedicalKB from '../constants/medicalKB';
 // -----------------------------------------------------------------
 const API_KEY = import.meta.env.VITE_OPENROUTER_API_KEY;
 const API_BASE_URL = 'https://openrouter.ai/api/v1';
-const MODEL = 'deepseek/deepseek-chat-v3-0324';
+const MODEL = 'moonshotai/kimi-k2:free';
 
 if (!API_KEY) {
   console.error("❌ CRITICAL: VITE_OPENROUTER_API_KEY environment variable not set.");
@@ -224,7 +224,7 @@ export const analyzePatientData = async (
   currentData: AnalysisInput,
   history: PatientRecord[]
 ): Promise<AIResponse> => {
-  console.log('🔬 Starting KB-driven patient data analysis with DeepSeek V3 via OpenRouter...');
+  console.log('🔬 Starting KB-driven patient data analysis with Kimi K2 via OpenRouter...');
 
   try {
     // Generate context using KB functions
@@ -422,7 +422,7 @@ Return ONLY a valid JSON object with this exact structure:
     );
 
     // Parse response
-    console.log('📊 Received DeepSeek response from OpenRouter, parsing...');
+    console.log('📊 Received Kimi K2 response from OpenRouter, parsing...');
     const result = JSON.parse(response.trim()) as AIResponse;
 
     // Validate response structure
