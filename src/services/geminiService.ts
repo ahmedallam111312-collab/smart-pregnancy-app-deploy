@@ -1,90 +1,20 @@
-// src/services/geminiService.ts
-// Updated to work with structured medicalKB using @google/genai package
+// src/services/deepseekService.ts
+// Updated to work with DeepSeek V3 via OpenRouter API
 
-import { GoogleGenAI, Type, Chat } from "@google/genai";
 import { PatientRecord, LabResults, AIResponse, RiskScores, SymptomsPayload } from '../types';
 import MedicalKB from '../constants/medicalKB';
 
 // -----------------------------------------------------------------
 // Configuration & Initialization
 // -----------------------------------------------------------------
-const API_KEY = import.meta.env.VITE_API_KEY;
+const API_KEY = import.meta.env.VITE_OPENROUTER_API_KEY;
+const API_BASE_URL = 'https://openrouter.ai/api/v1';
+const MODEL = 'deepseek/deepseek-chat-v3-0324';
 
 if (!API_KEY) {
-  console.error("❌ CRITICAL: VITE_API_KEY environment variable not set.");
-  throw new Error("Google AI API key is missing. Please check your .env file.");
+  console.error("❌ CRITICAL: VITE_OPENROUTER_API_KEY environment variable not set.");
+  throw new Error("OpenRouter API key is missing. Please check your .env file.");
 }
-
-const ai = new GoogleGenAI({ apiKey: API_KEY });
-
-// -----------------------------------------------------------------
-// Type Definitions & Schemas
-// -----------------------------------------------------------------
-const RiskScoresSchema = {
-  type: Type.OBJECT,
-  properties: {
-    overallRisk: {
-      type: Type.NUMBER,
-      description: "Overall pregnancy risk score from 0.0 (no risk) to 1.0 (high risk)."
-    },
-    preeclampsiaRisk: {
-      type: Type.NUMBER,
-      description: "Preeclampsia-specific risk score from 0.0 to 1.0."
-    },
-    gdmRisk: {
-      type: Type.NUMBER,
-      description: "Gestational Diabetes Mellitus (GDM) risk score from 0.0 to 1.0."
-    },
-    anemiaRisk: {
-      type: Type.NUMBER,
-      description: "Anemia risk score from 0.0 to 1.0."
-    }
-  },
-  required: ["overallRisk", "preeclampsiaRisk", "gdmRisk", "anemiaRisk"]
-};
-
-const LabResultsSchema = {
-  type: Type.OBJECT,
-  properties: {
-    systolicBp: {
-      type: Type.NUMBER,
-      nullable: true,
-      description: "Systolic blood pressure in mmHg"
-    },
-    diastolicBp: {
-      type: Type.NUMBER,
-      nullable: true,
-      description: "Diastolic blood pressure in mmHg"
-    },
-    fastingGlucose: {
-      type: Type.NUMBER,
-      nullable: true,
-      description: "Fasting blood glucose in mg/dL"
-    },
-    hb: {
-      type: Type.NUMBER,
-      nullable: true,
-      description: "Hemoglobin level in g/dL"
-    }
-  }
-};
-
-const AnalysisResponseSchema = {
-  type: Type.OBJECT,
-  properties: {
-    riskScores: RiskScoresSchema,
-    brief_summary: {
-      type: Type.STRING,
-      description: "Brief summary in Arabic (2-3 sentences)"
-    },
-    detailed_report: {
-      type: Type.STRING,
-      description: "Detailed medical report in Arabic with recommendations"
-    },
-    extracted_labs: LabResultsSchema
-  },
-  required: ["riskScores", "brief_summary", "detailed_report", "extracted_labs"]
-};
 
 // -----------------------------------------------------------------
 // Helper Functions
@@ -170,16 +100,93 @@ const validateRiskScores = (scores: RiskScores): boolean => {
   );
 };
 
+/**
+ * Call OpenRouter API (OpenAI-compatible format)
+ */
+const callOpenRouterAPI = async (
+  messages: Array<{ role: string; content: string }>,
+  options: {
+    temperature?: number;
+    maxTokens?: number;
+    responseFormat?: { type: string };
+  } = {}
+): Promise<string> => {
+  const response = await fetch(`${API_BASE_URL}/chat/completions`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${API_KEY}`,
+      'HTTP-Referer': window.location.origin, // Optional but recommended
+      'X-Title': 'Pregnancy Care App' // Optional but recommended
+    },
+    body: JSON.stringify({
+      model: MODEL,
+      messages,
+      temperature: options.temperature ?? 0.3,
+      max_tokens: options.maxTokens ?? 4000,
+      response_format: options.responseFormat,
+      stream: false
+    })
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    console.error('OpenRouter API Error:', errorText);
+    throw new Error(`OpenRouter API request failed: ${response.status} ${response.statusText}`);
+  }
+
+  const data = await response.json();
+  return data.choices[0].message.content;
+};
+
+/**
+ * Call OpenRouter API with streaming
+ */
+const callOpenRouterAPIStream = async (
+  messages: Array<{ role: string; content: string }>,
+  options: {
+    temperature?: number;
+    maxTokens?: number;
+  } = {}
+): Promise<ReadableStream> => {
+  const response = await fetch(`${API_BASE_URL}/chat/completions`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${API_KEY}`,
+      'HTTP-Referer': window.location.origin,
+      'X-Title': 'Pregnancy Care App'
+    },
+    body: JSON.stringify({
+      model: MODEL,
+      messages,
+      temperature: options.temperature ?? 0.7,
+      max_tokens: options.maxTokens ?? 2000,
+      stream: true
+    })
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    console.error('OpenRouter API Error:', errorText);
+    throw new Error(`OpenRouter API request failed: ${response.status} ${response.statusText}`);
+  }
+
+  if (!response.body) {
+    throw new Error('Response body is null');
+  }
+
+  return response.body;
+};
+
 // -----------------------------------------------------------------
 // Mock OCR Service
 // -----------------------------------------------------------------
 export const mockOcrService = async (file: File): Promise<string> => {
   console.log(`📄 Simulating OCR extraction for file: ${file.name}`);
 
-  // Simulate processing delay
   await new Promise(resolve => setTimeout(resolve, 1500));
 
-  // Mock extracted text - in production, this would be real OCR
   const mockResults = [
     'Laboratory Results Report',
     'Date: ' + new Date().toLocaleDateString(),
@@ -211,13 +218,13 @@ interface AnalysisInput {
 }
 
 /**
- * Analyzes patient data using Gemini AI with KB-driven context
+ * Analyzes patient data using DeepSeek V3 via OpenRouter
  */
 export const analyzePatientData = async (
   currentData: AnalysisInput,
   history: PatientRecord[]
 ): Promise<AIResponse> => {
-  console.log('🔬 Starting KB-driven patient data analysis...');
+  console.log('🔬 Starting KB-driven patient data analysis with DeepSeek V3 via OpenRouter...');
 
   try {
     // Generate context using KB functions
@@ -292,10 +299,8 @@ export const analyzePatientData = async (
       }
     });
 
-    // Build comprehensive prompt with KB context
-    const prompt = `
-**ROLE:** Expert Obstetrician AI Assistant specializing in high-risk pregnancy assessment
-
+    // Build comprehensive prompt
+    const userPrompt = `
 **CONTEXT:** Analyze the health record of a pregnant patient. Base your analysis STRICTLY on the provided data and medical knowledge base. Provide risk assessment and recommendations.
 
 **MEDICAL KNOWLEDGE BASE:**
@@ -375,34 +380,50 @@ ${historySummary}
    - Extracted lab values from all sources
 
 **OUTPUT FORMAT:**
-Return ONLY a JSON object. No additional text outside JSON.
-All text fields (brief_summary, detailed_report) MUST be in Arabic.
+Return ONLY a valid JSON object with this exact structure:
+{
+  "riskScores": {
+    "overallRisk": <number between 0.0 and 1.0>,
+    "preeclampsiaRisk": <number between 0.0 and 1.0>,
+    "gdmRisk": <number between 0.0 and 1.0>,
+    "anemiaRisk": <number between 0.0 and 1.0>
+  },
+  "brief_summary": "<2-3 sentences in Arabic>",
+  "detailed_report": "<detailed report in Arabic with markdown formatting>",
+  "extracted_labs": {
+    "systolicBp": <number or null>,
+    "diastolicBp": <number or null>,
+    "fastingGlucose": <number or null>,
+    "hb": <number or null>
+  }
+}
 
 **CRITICAL:** 
 - Ensure risk scores are realistic and evidence-based
 - Higher scores should only be given when clear risk factors are present
 - Reference the KB definitions and thresholds in your assessment
 - If red flag symptoms are present, emphasize urgency in your report
+- Return ONLY valid JSON, no additional text
 `;
 
-    // Call Gemini API
-    const response = await ai.models.generateContent({
-      model: "gemini-2.0-flash",
-      contents: prompt,
-      config: {
-        responseMimeType: "application/json",
-        responseSchema: AnalysisResponseSchema,
+    const systemPrompt = "You are an expert Obstetrician AI Assistant specializing in high-risk pregnancy assessment. You provide evidence-based medical analysis in Arabic.";
+
+    // Call OpenRouter API
+    const response = await callOpenRouterAPI(
+      [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: userPrompt }
+      ],
+      {
         temperature: 0.3,
-        topP: 0.8,
-        topK: 40
+        maxTokens: 4000,
+        responseFormat: { type: 'json_object' }
       }
-    });
+    );
 
     // Parse response
-    const jsonText = response.text.trim();
-    console.log('📊 Received AI response, parsing...');
-
-    const result = JSON.parse(jsonText) as AIResponse;
+    console.log('📊 Received DeepSeek response from OpenRouter, parsing...');
+    const result = JSON.parse(response.trim()) as AIResponse;
 
     // Validate response structure
     if (!result || !result.riskScores || !result.brief_summary || !result.detailed_report) {
@@ -439,13 +460,13 @@ All text fields (brief_summary, detailed_report) MUST be in Arabic.
     }
 
     if (error instanceof Error) {
-      if (error.message.includes('API key')) {
+      if (error.message.includes('API key') || error.message.includes('401')) {
         throw new Error('مفتاح API غير صالح. يرجى التحقق من الإعدادات.');
       }
-      if (error.message.includes('quota') || error.message.includes('rate limit')) {
+      if (error.message.includes('quota') || error.message.includes('rate limit') || error.message.includes('429')) {
         throw new Error('تم تجاوز حد الاستخدام. يرجى المحاولة لاحقاً.');
       }
-      if (error.message.includes('network') || error.message.includes('timeout')) {
+      if (error.message.includes('network') || error.message.includes('timeout') || error.message.includes('fetch')) {
         throw new Error('فشل الاتصال بالشبكة. يرجى التحقق من اتصالك بالإنترنت.');
       }
     }
@@ -457,8 +478,13 @@ All text fields (brief_summary, detailed_report) MUST be in Arabic.
 // -----------------------------------------------------------------
 // Chat Service
 // -----------------------------------------------------------------
+interface ChatMessage {
+  role: 'system' | 'user' | 'assistant';
+  content: string;
+}
+
 interface ChatInstance {
-  chat: Chat;
+  messages: ChatMessage[];
   lastActivity: Date;
 }
 
@@ -483,17 +509,19 @@ const cleanupInactiveChats = () => {
 
 setInterval(cleanupInactiveChats, 10 * 60 * 1000);
 
-const getChatInstance = (userId: string, history: PatientRecord[]): Chat => {
+const getChatInstance = (userId: string, history: PatientRecord[]): ChatInstance => {
   const existing = chatInstances.get(userId);
 
   if (existing) {
     existing.lastActivity = new Date();
-    return existing.chat;
+    return existing;
   }
 
   const historySummary = generateHistorySummary(history);
 
-  const systemInstruction = `
+  const systemMessage: ChatMessage = {
+    role: 'system',
+    content: `
 **ROLE:** You are 'رفيقة' (Rafeeqa), a caring and knowledgeable AI health assistant specialized in pregnancy care.
 
 **PERSONALITY:**
@@ -531,25 +559,18 @@ ${historySummary}
 - Provide clear, structured information
 - End with supportive encouragement or next steps
 - Use bullet points for lists when helpful
-`;
+`
+  };
 
-  const chat = ai.chats.create({
-    model: 'gemini-2.0-flash-exp',
-    config: {
-      systemInstruction,
-      temperature: 0.7,
-      topP: 0.9,
-      topK: 40
-    }
-  });
-
-  chatInstances.set(userId, {
-    chat,
+  const instance: ChatInstance = {
+    messages: [systemMessage],
     lastActivity: new Date()
-  });
+  };
 
+  chatInstances.set(userId, instance);
   console.log(`💬 Created new KB-driven chat instance for user: ${userId}`);
-  return chat;
+  
+  return instance;
 };
 
 export const getChatResponse = async (
@@ -564,10 +585,67 @@ export const getChatResponse = async (
   console.log(`💬 Processing chat message for user: ${userId}`);
 
   try {
-    const chat = getChatInstance(userId, history);
-    const stream = await chat.sendMessageStream({ message: message.trim() });
+    const chatInstance = getChatInstance(userId, history);
+    
+    // Add user message to history
+    chatInstance.messages.push({
+      role: 'user',
+      content: message.trim()
+    });
 
-    return stream;
+    // Get streaming response
+    const stream = await callOpenRouterAPIStream(chatInstance.messages, {
+      temperature: 0.7,
+      maxTokens: 2000
+    });
+
+    // Create a custom async iterator for the stream
+    const reader = stream.getReader();
+    const decoder = new TextDecoder();
+    let assistantMessage = '';
+
+    const customStream = {
+      async *[Symbol.asyncIterator]() {
+        try {
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+
+            const chunk = decoder.decode(value, { stream: true });
+            const lines = chunk.split('\n').filter(line => line.trim() !== '');
+
+            for (const line of lines) {
+              if (line.startsWith('data: ')) {
+                const data = line.slice(6);
+                if (data === '[DONE]') continue;
+
+                try {
+                  const parsed = JSON.parse(data);
+                  const content = parsed.choices[0]?.delta?.content;
+                  if (content) {
+                    assistantMessage += content;
+                    yield { text: content };
+                  }
+                } catch (e) {
+                  console.error('Error parsing SSE data:', e);
+                }
+              }
+            }
+          }
+        } finally {
+          // Add assistant's complete message to history
+          if (assistantMessage) {
+            chatInstance.messages.push({
+              role: 'assistant',
+              content: assistantMessage
+            });
+          }
+          reader.releaseLock();
+        }
+      }
+    };
+
+    return customStream;
 
   } catch (error) {
     console.error('❌ Error getting chat response:', error);
@@ -575,10 +653,10 @@ export const getChatResponse = async (
     chatInstances.delete(userId);
 
     if (error instanceof Error) {
-      if (error.message.includes('API key')) {
+      if (error.message.includes('API key') || error.message.includes('401')) {
         throw new Error('خطأ في مفتاح الوصول. يرجى التواصل مع الدعم الفني.');
       }
-      if (error.message.includes('quota') || error.message.includes('rate limit')) {
+      if (error.message.includes('quota') || error.message.includes('rate limit') || error.message.includes('429')) {
         throw new Error('تم تجاوز حد الاستخدام. يرجى المحاولة بعد قليل.');
       }
       if (error.message.includes('safety')) {
