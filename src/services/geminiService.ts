@@ -1,5 +1,5 @@
-// src/services/kimiService.ts
-// Updated to work with DeepSeek R1T2 Chimera via OpenRouter API (Free tier)
+// src/services/aiService.ts
+// Updated to work with NVIDIA Nemotron Nano via OpenRouter API (Free tier with reasoning)
 
 import { PatientRecord, LabResults, AIResponse, RiskScores, SymptomsPayload } from '../types';
 import MedicalKB from '../constants/medicalKB';
@@ -9,7 +9,7 @@ import MedicalKB from '../constants/medicalKB';
 // -----------------------------------------------------------------
 const API_KEY = import.meta.env.VITE_OPENROUTER_API_KEY;
 const API_BASE_URL = 'https://openrouter.ai/api/v1';
-const MODEL = 'tngtech/deepseek-r1t2-chimera:free';
+const MODEL = 'nvidia/nemotron-nano-12b-v2-vl:free';
 
 if (!API_KEY) {
   console.error("❌ CRITICAL: VITE_OPENROUTER_API_KEY environment variable not set.");
@@ -109,8 +109,27 @@ const callOpenRouterAPI = async (
     temperature?: number;
     maxTokens?: number;
     responseFormat?: { type: string };
+    enableReasoning?: boolean;
   } = {}
 ): Promise<string> => {
+  const requestBody: any = {
+    model: MODEL,
+    messages,
+    temperature: options.temperature ?? 0.3,
+    max_tokens: options.maxTokens ?? 4000,
+    stream: false
+  };
+
+  // Add reasoning configuration for Nemotron
+  if (options.enableReasoning !== false) {
+    requestBody.reasoning = { enabled: true };
+  }
+
+  // Add response format if specified
+  if (options.responseFormat) {
+    requestBody.response_format = options.responseFormat;
+  }
+
   const response = await fetch(`${API_BASE_URL}/chat/completions`, {
     method: 'POST',
     headers: {
@@ -119,14 +138,7 @@ const callOpenRouterAPI = async (
       'HTTP-Referer': window.location.origin, // Optional but recommended
       'X-Title': 'Pregnancy Care App' // Optional but recommended
     },
-    body: JSON.stringify({
-      model: MODEL,
-      messages,
-      temperature: options.temperature ?? 0.3,
-      max_tokens: options.maxTokens ?? 4000,
-      response_format: options.responseFormat,
-      stream: false
-    })
+    body: JSON.stringify(requestBody)
   });
 
   if (!response.ok) {
@@ -147,8 +159,22 @@ const callOpenRouterAPIStream = async (
   options: {
     temperature?: number;
     maxTokens?: number;
+    enableReasoning?: boolean;
   } = {}
 ): Promise<ReadableStream> => {
+  const requestBody: any = {
+    model: MODEL,
+    messages,
+    temperature: options.temperature ?? 0.7,
+    max_tokens: options.maxTokens ?? 2000,
+    stream: true
+  };
+
+  // Add reasoning configuration for Nemotron
+  if (options.enableReasoning !== false) {
+    requestBody.reasoning = { enabled: true };
+  }
+
   const response = await fetch(`${API_BASE_URL}/chat/completions`, {
     method: 'POST',
     headers: {
@@ -157,13 +183,7 @@ const callOpenRouterAPIStream = async (
       'HTTP-Referer': window.location.origin,
       'X-Title': 'Pregnancy Care App'
     },
-    body: JSON.stringify({
-      model: MODEL,
-      messages,
-      temperature: options.temperature ?? 0.7,
-      max_tokens: options.maxTokens ?? 2000,
-      stream: true
-    })
+    body: JSON.stringify(requestBody)
   });
 
   if (!response.ok) {
@@ -224,7 +244,7 @@ export const analyzePatientData = async (
   currentData: AnalysisInput,
   history: PatientRecord[]
 ): Promise<AIResponse> => {
-  console.log('🔬 Starting KB-driven patient data analysis with DeepSeek R1T2 Chimera via OpenRouter...');
+  console.log('🔬 Starting KB-driven patient data analysis with NVIDIA Nemotron Nano (with reasoning) via OpenRouter...');
 
   try {
     // Generate context using KB functions
@@ -408,7 +428,7 @@ Return ONLY a valid JSON object with this exact structure:
 
     const systemPrompt = "You are an expert Obstetrician AI Assistant specializing in high-risk pregnancy assessment. You provide evidence-based medical analysis in Arabic.";
 
-    // Call OpenRouter API
+    // Call OpenRouter API with reasoning enabled
     const response = await callOpenRouterAPI(
       [
         { role: 'system', content: systemPrompt },
@@ -417,12 +437,13 @@ Return ONLY a valid JSON object with this exact structure:
       {
         temperature: 0.3,
         maxTokens: 4000,
-        responseFormat: { type: 'json_object' }
+        responseFormat: { type: 'json_object' },
+        enableReasoning: true
       }
     );
 
     // Parse response
-    console.log('📊 Received DeepSeek R1T2 Chimera response from OpenRouter, parsing...');
+    console.log('📊 Received NVIDIA Nemotron response from OpenRouter, parsing...');
     const result = JSON.parse(response.trim()) as AIResponse;
 
     // Validate response structure
@@ -593,10 +614,11 @@ export const getChatResponse = async (
       content: message.trim()
     });
 
-    // Get streaming response
+    // Get streaming response with reasoning enabled
     const stream = await callOpenRouterAPIStream(chatInstance.messages, {
       temperature: 0.7,
-      maxTokens: 2000
+      maxTokens: 2000,
+      enableReasoning: true
     });
 
     // Create a custom async iterator for the stream
