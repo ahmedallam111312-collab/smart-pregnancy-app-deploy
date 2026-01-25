@@ -24,7 +24,8 @@ interface FormData {
   personalInfo: PersonalInfo & { pregnancyWeek?: number };
   pregnancyHistory: PregnancyHistory;
   measurementData: MeasurementData;
-  // ADDED: Risk Factors Store
+  // ADD THIS LINE:
+  antepartumRiskFactors: string[]; // Array of selected factor IDs
   riskFactors: Record<string, boolean>;
   symptoms: SymptomsPayload;
   labResults: LabResults;
@@ -215,12 +216,12 @@ const AssessmentPage: React.FC<{ navigate: (page: Page) => void }> = ({ navigate
     });
     return symptoms;
   }, []);
-
   const [formData, setFormData] = useState<FormData>({
     personalInfo: { name: '', age: 0, pregnancyWeek: 12 },
     pregnancyHistory: { g: 0, p: 0, a: 0 },
     measurementData: { height: 0, prePregnancyWeight: 0, currentWeight: 0 },
-    // ADDED: Initialize Manual Risk Factors
+    // ADD THIS LINE:
+    antepartumRiskFactors: [],
     riskFactors: MANUAL_RISK_FACTORS.reduce((acc, key) => ({ ...acc, [key]: false }), {}),
     symptoms: initialSymptoms,
     labResults: {},
@@ -235,6 +236,14 @@ const AssessmentPage: React.FC<{ navigate: (page: Page) => void }> = ({ navigate
   const [validationErrors, setValidationErrors] = useState<string[]>([]);
   const [analysisResult, setAnalysisResult] = useState<AIResponse | null>(null);
   const [showSuccessAnimation, setShowSuccessAnimation] = useState(false);
+  // Calculate antepartum score
+  const antepartumScore = useMemo(() => {
+    return MedicalKB.calculateAntepartumScore(formData.antepartumRiskFactors);
+  }, [formData.antepartumRiskFactors]);
+
+  const antepartumRiskLevel = useMemo(() => {
+    return MedicalKB.getAntepartumRiskLevel(antepartumScore);
+  }, [antepartumScore]);
 
   // UPDATED: Added "Risk Factors" step in the middle
   const steps = useMemo(() => [
@@ -335,7 +344,15 @@ const AssessmentPage: React.FC<{ navigate: (page: Page) => void }> = ({ navigate
       },
     }));
   }, []);
-
+  // NEW: Antepartum risk factor toggle
+  const handleAntepartumFactorToggle = useCallback((factorId: string) => {
+    setFormData(prev => ({
+      ...prev,
+      antepartumRiskFactors: prev.antepartumRiskFactors.includes(factorId)
+        ? prev.antepartumRiskFactors.filter(id => id !== factorId)
+        : [...prev.antepartumRiskFactors, factorId]
+    }));
+  }, []);
   // File change handler
   const handleFileChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -419,7 +436,11 @@ const AssessmentPage: React.FC<{ navigate: (page: Page) => void }> = ({ navigate
         symptoms: formData.symptoms,
         labResults: formData.labResults,
         ocrText: ocrResult || formData.ocrText,
-        riskFactors: formData.riskFactors, // Send manual risks to AI
+        riskFactors: formData.riskFactors,
+        // ADD THESE THREE LINES:
+        antepartumRiskFactors: formData.antepartumRiskFactors,
+        antepartumScore: antepartumScore,
+        antepartumRiskLevel: antepartumRiskLevel,
         knownDiagnosis: false,
         kbRiskScores: {
           preeclampsia: finalPreeclampsia.score,
@@ -427,7 +448,6 @@ const AssessmentPage: React.FC<{ navigate: (page: Page) => void }> = ({ navigate
           anemia: finalAnemia.score
         }
       };
-
       const userHistory = await getPatientRecordsByUserId(user.id);
       const result = await analyzePatientData(dataToAnalyze, userHistory);
 
@@ -436,7 +456,9 @@ const AssessmentPage: React.FC<{ navigate: (page: Page) => void }> = ({ navigate
         overallRisk: Math.max(finalPreeclampsia.score, finalGdm.score, finalAnemia.score),
         preeclampsiaRisk: finalPreeclampsia.score,
         gdmRisk: finalGdm.score,
-        anemiaRisk: finalAnemia.score
+        anemiaRisk: finalAnemia.score,
+        antepartumScore: antepartumScore,
+        antepartumRiskLevel: antepartumRiskLevel.level
       };
 
       setAnalysisResult(result);
@@ -780,71 +802,148 @@ const AssessmentPage: React.FC<{ navigate: (page: Page) => void }> = ({ navigate
         );
 
       case 4:
-        // ====================================================================
-        // NEW STEP: RISK FACTORS & HISTORY
-        // Designed to match the rich UI of the rest of the app
-        // ====================================================================
         return (
-          <Card title={lang === 'ar' ? "⚠️ الخطوة 4: عوامل الخطورة والتاريخ الطبي" : "⚠️ Step 4: Risk Factors & Medical History"}>
+          <Card title={lang === 'ar' ? "⚠️ الخطوة 4: عوامل الخطورة أثناء الحمل" : "⚠️ Step 4: Antepartum Risk Factors"}>
             <div className="space-y-6">
-              <div className="bg-yellow-50 border-r-4 border-yellow-400 p-4 rounded-lg">
-                <p className="text-sm text-yellow-800 flex items-center gap-2">
-                  <span className="text-xl">ℹ️</span>
-                  {lang === 'ar'
-                    ? 'يرجى الإجابة بـ "نعم" إذا كانت أي من العوامل التالية تنطبق عليك.'
-                    : 'Please answer "Yes" if any of the following factors apply to you.'}
-                </p>
+              {/* Header Info */}
+              <div className="bg-gradient-to-r from-yellow-50 to-orange-50 border-r-4 border-yellow-400 p-5 rounded-xl">
+                <div className="flex items-start gap-3">
+                  <span className="text-3xl">📋</span>
+                  <div className="flex-1">
+                    <p className="text-lg font-bold text-yellow-900 mb-2">
+                      {lang === 'ar' ? 'تقييم عوامل الخطورة أثناء الحمل' : 'Antepartum Risk Assessment'}
+                    </p>
+                    <p className="text-sm text-yellow-800">
+                      {lang === 'ar'
+                        ? 'يرجى الإجابة بـ "نعم" على جميع العوامل التي تنطبق عليك. هذا التقييم يساعد في تحديد مستوى الخطورة والرعاية المناسبة.'
+                        : 'Please check "Yes" for all factors that apply to you. This assessment helps determine risk level and appropriate care.'}
+                    </p>
+                  </div>
+                </div>
               </div>
 
-              <div className="grid grid-cols-1 gap-4">
-                {MANUAL_RISK_FACTORS.map(key => {
-                  const factor = MedicalKB.RISK_FACTORS[key];
-                  if (!factor) return null;
+              {/* Current Score Display */}
+              <div className={`p-6 rounded-xl border-2 ${antepartumRiskLevel.level === 'high' ? 'bg-red-50 border-red-400' :
+                  antepartumRiskLevel.level === 'moderate' ? 'bg-yellow-50 border-yellow-400' :
+                    'bg-green-50 border-green-400'
+                }`}>
+                <div className="flex items-center justify-between mb-4">
+                  <div>
+                    <p className="text-sm text-gray-600 mb-1">
+                      {lang === 'ar' ? 'النقاط الحالية' : 'Current Score'}
+                    </p>
+                    <p className="text-5xl font-bold">
+                      {antepartumRiskLevel.emoji} {antepartumScore}
+                    </p>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-sm text-gray-600 mb-1">
+                      {lang === 'ar' ? 'مستوى الخطورة' : 'Risk Level'}
+                    </p>
+                    <p className={`text-2xl font-bold ${antepartumRiskLevel.level === 'high' ? 'text-red-600' :
+                        antepartumRiskLevel.level === 'moderate' ? 'text-yellow-600' :
+                          'text-green-600'
+                      }`}>
+                      {lang === 'ar' ? antepartumRiskLevel.titleAr : antepartumRiskLevel.titleEn}
+                    </p>
+                  </div>
+                </div>
 
-                  const isChecked = formData.riskFactors[key];
-
-                  return (
-                    <div
-                      key={key}
-                      className={`relative flex items-center justify-between p-4 rounded-xl border-2 transition-all cursor-pointer ${isChecked
-                        ? 'border-red-400 bg-red-50 shadow-md'
-                        : 'border-gray-200 bg-white hover:border-gray-300'
-                        }`}
-                      onClick={() => handleRiskFactorCheck(key)}
-                    >
-                      <div className="flex items-center gap-4">
-                        <div className={`w-12 h-12 rounded-full flex items-center justify-center text-2xl flex-shrink-0 ${isChecked ? 'bg-red-200' : 'bg-gray-100'
-                          }`}>
-                          {key.includes('Diabetes') ? '🍬' : key.includes('Diet') ? '🥗' : '👶'}
-                        </div>
-                        <div className="text-right">
-                          <p className={`font-bold text-lg ${isChecked ? 'text-red-900' : 'text-gray-700'}`}>
-                            {lang === 'ar' ? factor.labelAr : factor.labelEn}
-                          </p>
-                          <p className="text-sm text-gray-500">
-                            {lang === 'ar' ? factor.descriptionAr : factor.descriptionEn}
-                          </p>
-                        </div>
-                      </div>
-
-                      <div className="flex items-center gap-2">
-                        <span className={`font-bold ${isChecked ? 'text-red-600' : 'text-gray-400'}`}>
-                          {isChecked ? (lang === 'ar' ? 'نعم' : 'Yes') : (lang === 'ar' ? 'لا' : 'No')}
-                        </span>
-                        <div className={`w-14 h-8 flex items-center rounded-full p-1 duration-300 ease-in-out ${isChecked ? 'bg-red-500' : 'bg-gray-300'
-                          }`}>
-                          <div className={`bg-white w-6 h-6 rounded-full shadow-md transform duration-300 ease-in-out ${isChecked ? 'translate-x-0' : '-translate-x-6'
-                            }`} />
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })}
+                <div className="pt-4 border-t border-gray-300">
+                  <p className="text-sm text-gray-700">
+                    {lang === 'ar' ? antepartumRiskLevel.interpretationAr : antepartumRiskLevel.interpretationEn}
+                  </p>
+                </div>
               </div>
+
+              {/* Risk Factor Categories */}
+              {MedicalKB.ANTEPARTUM_RISK_FACTORS.map((category) => (
+                <div key={category.name} className="bg-white border-2 border-gray-200 rounded-xl p-5 shadow-sm">
+                  <h3 className="text-xl font-bold text-brand-pink-dark mb-4 border-r-4 border-brand-pink pr-3 flex items-center gap-2">
+                    <span className="text-2xl">
+                      {category.name === 'demographic' ? '👥' :
+                        category.name === 'psychosocial' ? '💭' :
+                          category.name === 'obstetric_history' ? '👶' :
+                            category.name === 'medical_history' ? '🏥' :
+                              '🤰'}
+                    </span>
+                    <span>{lang === 'ar' ? category.nameAr : category.nameEn}</span>
+                  </h3>
+
+                  <div className="space-y-3">
+                    {category.factors.map((factor) => {
+                      const isSelected = formData.antepartumRiskFactors.includes(factor.id);
+
+                      return (
+                        <div
+                          key={factor.id}
+                          className={`relative flex items-center justify-between p-4 rounded-xl border-2 transition-all cursor-pointer ${isSelected
+                              ? 'border-red-400 bg-red-50 shadow-md'
+                              : 'border-gray-200 bg-white hover:border-gray-300 hover:shadow'
+                            }`}
+                          onClick={() => handleAntepartumFactorToggle(factor.id)}
+                        >
+                          <div className="flex items-center gap-4 flex-1">
+                            {/* Score Badge */}
+                            <div className={`w-12 h-12 rounded-full flex items-center justify-center text-xl font-bold flex-shrink-0 ${isSelected ? 'bg-red-200 text-red-700' : 'bg-gray-100 text-gray-500'
+                              }`}>
+                              {factor.score}
+                            </div>
+
+                            {/* Question Text */}
+                            <div className="text-right flex-1">
+                              <p className={`font-semibold text-lg ${isSelected ? 'text-red-900' : 'text-gray-700'
+                                }`}>
+                                {lang === 'ar' ? factor.questionAr : factor.questionEn}
+                              </p>
+                              <p className="text-xs text-gray-500 mt-1">
+                                {lang === 'ar' ? `${factor.score} نقطة` : `${factor.score} points`}
+                              </p>
+                            </div>
+                          </div>
+
+                          {/* Toggle Switch */}
+                          <div className="flex items-center gap-3 mr-4">
+                            <span className={`font-bold text-lg ${isSelected ? 'text-red-600' : 'text-gray-400'
+                              }`}>
+                              {isSelected ? (lang === 'ar' ? 'نعم' : 'Yes') : (lang === 'ar' ? 'لا' : 'No')}
+                            </span>
+                            <div className={`w-14 h-8 flex items-center rounded-full p-1 duration-300 ease-in-out ${isSelected ? 'bg-red-500' : 'bg-gray-300'
+                              }`}>
+                              <div className={`bg-white w-6 h-6 rounded-full shadow-md transform duration-300 ease-in-out ${isSelected ? 'translate-x-6' : 'translate-x-0'
+                                }`} />
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              ))}
+
+              {/* Recommendations Based on Score */}
+              {antepartumScore > 0 && (
+                <div className={`p-5 rounded-xl border-r-4 ${antepartumRiskLevel.level === 'high' ? 'bg-red-50 border-red-500' :
+                    antepartumRiskLevel.level === 'moderate' ? 'bg-yellow-50 border-yellow-500' :
+                      'bg-blue-50 border-blue-500'
+                  }`}>
+                  <h4 className="font-bold text-lg mb-3 flex items-center gap-2">
+                    <span className="text-2xl">💡</span>
+                    <span>{lang === 'ar' ? 'التوصيات' : 'Recommendations'}</span>
+                  </h4>
+                  <ul className="space-y-2">
+                    {(lang === 'ar' ? antepartumRiskLevel.recommendationsAr : antepartumRiskLevel.recommendationsEn).map((rec, idx) => (
+                      <li key={idx} className="flex items-start gap-2">
+                        <span className="text-brand-pink font-bold mt-1">•</span>
+                        <span className="flex-1">{rec}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
             </div>
           </Card>
         );
-
       case 5:
         // PREVIOUSLY STEP 4 - Full UI Restored
         return (
@@ -1225,6 +1324,39 @@ const AssessmentPage: React.FC<{ navigate: (page: Page) => void }> = ({ navigate
                     </p>
                   </div>
                 </div>
+                {/* NEW: Antepartum Risk Score Card */}
+                <div className={`p-6 rounded-2xl shadow-lg border-2 ${antepartumRiskLevel.level === 'high' ? 'bg-red-50 border-red-400' :
+                    antepartumRiskLevel.level === 'moderate' ? 'bg-yellow-50 border-yellow-400' :
+                      'bg-green-50 border-green-400'
+                  }`}>
+                  <h3 className="text-xl font-bold text-center mb-4 flex items-center justify-center gap-2">
+                    <span className="text-3xl">{antepartumRiskLevel.emoji}</span>
+                    <span>{lang === 'ar' ? 'تقييم عوامل الخطورة أثناء الحمل' : 'Antepartum Risk Assessment'}</span>
+                  </h3>
+                  <div className="text-center">
+                    <p className="text-5xl font-bold mb-2">
+                      {antepartumScore} {lang === 'ar' ? 'نقطة' : 'points'}
+                    </p>
+                    <p className={`text-2xl font-semibold mb-4 ${antepartumRiskLevel.level === 'high' ? 'text-red-600' :
+                        antepartumRiskLevel.level === 'moderate' ? 'text-yellow-600' :
+                          'text-green-600'
+                      }`}>
+                      {lang === 'ar' ? antepartumRiskLevel.titleAr : antepartumRiskLevel.titleEn}
+                    </p>
+                    <p className="text-gray-700 mb-4">
+                      {lang === 'ar' ? antepartumRiskLevel.interpretationAr : antepartumRiskLevel.interpretationEn}
+                    </p>
+                    <div className="bg-white rounded-lg p-4 border border-gray-200">
+                      <p className="font-semibold mb-2">
+                        {lang === 'ar' ? 'عوامل الخطورة المحددة:' : 'Identified Risk Factors:'}
+                      </p>
+                      <p className="text-gray-600">
+                        {formData.antepartumRiskFactors.length} {lang === 'ar' ? 'عامل' : 'factors'}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
 
                 {/* KB-Driven Detailed Risk Scores by Condition */}
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
