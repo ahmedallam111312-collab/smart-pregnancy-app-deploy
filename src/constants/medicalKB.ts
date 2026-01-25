@@ -1000,7 +1000,408 @@ replace professional medical advice, diagnosis, or treatment.
 // ============================================================================
 // EXPORTS
 // ============================================================================
+// ============================================================================
+// ANTEPARTUM RISK ASSESSMENT (Add this section to medicalKB.ts)
+// ============================================================================
 
+export interface AntepartumRiskFactor {
+  id: string;
+  category: string;
+  questionAr: string;
+  questionEn: string;
+  score: number;
+}
+
+export interface AntepartumCategory {
+  name: string;
+  nameAr: string;
+  nameEn: string;
+  factors: AntepartumRiskFactor[];
+}
+
+export const ANTEPARTUM_RISK_FACTORS: AntepartumCategory[] = [
+  {
+    name: "demographic",
+    nameAr: "العوامل الديموغرافية والاجتماعية والاقتصادية",
+    nameEn: "Demographic and Socioeconomic",
+    factors: [
+      {
+        id: "maternal_age",
+        category: "demographic",
+        questionAr: "عمر الأم أقل من 17 أو أكثر من 35 سنة",
+        questionEn: "Maternal age <17 or >35",
+        score: 2
+      },
+      {
+        id: "unmarried",
+        category: "demographic",
+        questionAr: "غير متزوجة أو بدون دعم",
+        questionEn: "Unmarried or unsupported",
+        score: 2
+      },
+      {
+        id: "low_ses",
+        category: "demographic",
+        questionAr: "مستوى اجتماعي واقتصادي منخفض",
+        questionEn: "Low socioeconomic status",
+        score: 1
+      },
+      {
+        id: "limited_education",
+        category: "demographic",
+        questionAr: "تعليم محدود (أقل من 8 سنوات)",
+        questionEn: "Limited education (<8 years)",
+        score: 1
+      },
+      {
+        id: "poor_housing",
+        category: "demographic",
+        questionAr: "سكن سيء / صرف صحي سيء",
+        questionEn: "Poor housing / sanitation",
+        score: 1
+      },
+      {
+        id: "cultural_barriers",
+        category: "demographic",
+        questionAr: "حواجز لغوية أو ثقافية في الرعاية",
+        questionEn: "Language or cultural barriers to care",
+        score: 1
+      }
+    ]
+  },
+  {
+    name: "psychosocial",
+    nameAr: "العوامل العاطفية والنفسية والاجتماعية",
+    nameEn: "Emotional and Psychosocial",
+    factors: [
+      {
+        id: "anxiety_depression",
+        category: "psychosocial",
+        questionAr: "قلق مفرط، اكتئاب، أو ضعف في التأقلم",
+        questionEn: "Excessive anxiety, depression, or poor coping",
+        score: 2
+      },
+      {
+        id: "family_conflict",
+        category: "psychosocial",
+        questionAr: "صراع زوجي أو عائلي",
+        questionEn: "Marital or family conflict",
+        score: 2
+      },
+      {
+        id: "emotional_illness_history",
+        category: "psychosocial",
+        questionAr: "تاريخ من الأمراض العاطفية",
+        questionEn: "History of emotional illness",
+        score: 2
+      },
+      {
+        id: "substance_use",
+        category: "psychosocial",
+        questionAr: "تعاطي المواد (التبغ، الكحول، المخدرات)",
+        questionEn: "Substance use (tobacco, alcohol, drugs)",
+        score: 3
+      }
+    ]
+  },
+  {
+    name: "obstetric_history",
+    nameAr: "التاريخ التوليدي السابق",
+    nameEn: "Past Obstetric History",
+    factors: [
+      {
+        id: "stillbirth_neonatal_death",
+        category: "obstetric_history",
+        questionAr: "ولادة جنين ميت سابقة أو وفاة حديثي الولادة",
+        questionEn: "Previous stillbirth or neonatal death",
+        score: 4
+      },
+      {
+        id: "preterm_low_birthweight",
+        category: "obstetric_history",
+        questionAr: "ولادة مبكرة سابقة أو طفل منخفض الوزن عند الولادة",
+        questionEn: "Previous preterm or low birthweight infant",
+        score: 3
+      },
+      {
+        id: "recurrent_miscarriage",
+        category: "obstetric_history",
+        questionAr: "إجهاض متكرر",
+        questionEn: "Recurrent miscarriage",
+        score: 3
+      },
+      {
+        id: "grand_multiparity",
+        category: "obstetric_history",
+        questionAr: "كثرة الولادات (≥5)",
+        questionEn: "Grand multiparity (≥5)",
+        score: 2
+      },
+      {
+        id: "previous_cesarean",
+        category: "obstetric_history",
+        questionAr: "عملية قيصرية سابقة",
+        questionEn: "Previous cesarean section",
+        score: 2
+      }
+    ]
+  },
+  {
+    name: "medical_history",
+    nameAr: "التاريخ الطبي (الحالات الموجودة مسبقاً)",
+    nameEn: "Medical History (Pre-existing Conditions)",
+    factors: [
+      {
+        id: "hypertension_preexisting",
+        category: "medical_history",
+        questionAr: "ارتفاع ضغط الدم",
+        questionEn: "Hypertension",
+        score: 4
+      },
+      {
+        id: "cardiac_disease",
+        category: "medical_history",
+        questionAr: "مرض القلب",
+        questionEn: "Cardiac disease",
+        score: 4
+      },
+      {
+        id: "diabetes_preexisting",
+        category: "medical_history",
+        questionAr: "داء السكري",
+        questionEn: "Diabetes mellitus",
+        score: 4
+      },
+      {
+        id: "renal_disease",
+        category: "medical_history",
+        questionAr: "مرض كلوي",
+        questionEn: "Renal disease",
+        score: 3
+      },
+      {
+        id: "thyroid_disorder",
+        category: "medical_history",
+        questionAr: "اضطراب الغدة الدرقية",
+        questionEn: "Thyroid disorder",
+        score: 2
+      },
+      {
+        id: "epilepsy",
+        category: "medical_history",
+        questionAr: "الصرع",
+        questionEn: "Epilepsy",
+        score: 2
+      },
+      {
+        id: "chronic_infection",
+        category: "medical_history",
+        questionAr: "عدوى مزمنة (السل، التهاب الكبد، فيروس نقص المناعة البشرية)",
+        questionEn: "Chronic infection (TB, hepatitis, HIV)",
+        score: 3
+      },
+      {
+        id: "anemia_severe",
+        category: "medical_history",
+        questionAr: "فقر الدم (Hb <10 g/dL)",
+        questionEn: "Anemia (Hb <10 g/dL)",
+        score: 2
+      }
+    ]
+  },
+  {
+    name: "current_pregnancy",
+    nameAr: "مضاعفات الحمل الحالي",
+    nameEn: "Current Pregnancy Complications",
+    factors: [
+      {
+        id: "bleeding_early",
+        category: "current_pregnancy",
+        questionAr: "نزيف قبل 20 أسبوعاً",
+        questionEn: "Bleeding before 20 weeks",
+        score: 3
+      },
+      {
+        id: "persistent_vomiting",
+        category: "current_pregnancy",
+        questionAr: "قيء مستمر / قيء الحمل المفرط",
+        questionEn: "Persistent vomiting / hyperemesis",
+        score: 2
+      },
+      {
+        id: "abnormal_uterine_size",
+        category: "current_pregnancy",
+        questionAr: "حجم الرحم غير طبيعي (صغير جداً / كبير جداً)",
+        questionEn: "Abnormal uterine size (too small / large)",
+        score: 2
+      },
+      {
+        id: "multiple_pregnancy",
+        category: "current_pregnancy",
+        questionAr: "حمل متعدد (توأم، ثلاثة توائم)",
+        questionEn: "Multiple pregnancy (twins, triplets)",
+        score: 3
+      },
+      {
+        id: "rh_negative",
+        category: "current_pregnancy",
+        questionAr: "عامل ريسس سالب أو تحسس مناعي",
+        questionEn: "Rh negative or isoimmunization",
+        score: 2
+      },
+      {
+        id: "infection_current",
+        category: "current_pregnancy",
+        questionAr: "عدوى (التهاب المسالك البولية، الحصبة الألمانية، داء المقوسات، الزهري، إلخ)",
+        questionEn: "Infection (UTI, rubella, toxoplasmosis, syphilis, etc.)",
+        score: 3
+      },
+      {
+        id: "preeclampsia_current",
+        category: "current_pregnancy",
+        questionAr: "تسمم الحمل / ارتفاع ضغط الدم",
+        questionEn: "Preeclampsia / hypertension",
+        score: 4
+      },
+      {
+        id: "amniotic_fluid_abnormal",
+        category: "current_pregnancy",
+        questionAr: "زيادة السائل الأمنيوسي / نقص السائل الأمنيوسي",
+        questionEn: "Polyhydramnios / oligohydramnios",
+        score: 3
+      },
+      {
+        id: "fetal_growth_restriction",
+        category: "current_pregnancy",
+        questionAr: "تقييد نمو الجنين المشتبه به",
+        questionEn: "Suspected fetal growth restriction",
+        score: 3
+      },
+      {
+        id: "poor_weight_gain",
+        category: "current_pregnancy",
+        questionAr: "زيادة وزن الأم ضعيفة (<5 رطل بحلول 20 أسبوعاً)",
+        questionEn: "Poor maternal weight gain (<5 lb by 20 wks)",
+        score: 2
+      }
+    ]
+  }
+];
+
+// Risk level interpretation
+export interface AntepartumRiskLevel {
+  level: "low" | "moderate" | "high";
+  emoji: string;
+  color: string;
+  colorClass: string;
+  titleAr: string;
+  titleEn: string;
+  interpretationAr: string;
+  interpretationEn: string;
+  recommendationsAr: string[];
+  recommendationsEn: string[];
+}
+
+export function getAntepartumRiskLevel(totalScore: number): AntepartumRiskLevel {
+  if (totalScore >= 0 && totalScore <= 9) {
+    return {
+      level: "low",
+      emoji: "🟢",
+      color: "green",
+      colorClass: "bg-green-500",
+      titleAr: "خطر منخفض",
+      titleEn: "Low Risk",
+      interpretationAr: "لم يتم تحديد عوامل خطر كبيرة. من المتوقع أن يتقدم الحمل بشكل طبيعي.",
+      interpretationEn: "No significant risk factors identified. Pregnancy expected to progress normally.",
+      recommendationsAr: [
+        "الاستمرار في الرعاية السابقة للولادة الروتينية",
+        "التأكيد على التغذية والراحة والاستعداد للولادة",
+        "جدول الزيارات القياسي (كل 4-6 أسابيع حتى 28 أسبوعاً؛ كل أسبوعين بعد ذلك)"
+      ],
+      recommendationsEn: [
+        "Continue routine antenatal care (ANC)",
+        "Emphasize nutrition, rest, and birth preparedness",
+        "Standard visit schedule (every 4-6 weeks until 28 weeks; every 2 weeks thereafter)"
+      ]
+    };
+  } else if (totalScore >= 10 && totalScore <= 19) {
+    return {
+      level: "moderate",
+      emoji: "🟡",
+      color: "yellow",
+      colorClass: "bg-yellow-500",
+      titleAr: "خطر متوسط",
+      titleEn: "Moderate Risk",
+      interpretationAr: "وجود عامل خطر واحد أو أكثر خفيف إلى متوسط (مثل سن الأم الصغيرة أو المتقدمة، فقر الدم الخفيف، قيصرية سابقة، عدوى).",
+      interpretationEn: "One or more mild-to-moderate risk factors present (e.g., young or advanced maternal age, mild anemia, previous cesarean, infection).",
+      recommendationsAr: [
+        "يتطلب مراقبة ومتابعة أكثر دقة",
+        "زيادة تكرار زيارات الرعاية السابقة للولادة (كل 2-3 أسابيع)",
+        "إجراء فحوصات إضافية حسب الإشارة (مثل الموجات فوق الصوتية، الفحوصات المخبرية)",
+        "تقديم المشورة ومعالجة المخاطر القابلة للتعديل",
+        "النظر في الإحالة المبكرة إذا ظهرت مضاعفات جديدة"
+      ],
+      recommendationsEn: [
+        "Requires closer monitoring and follow-up",
+        "Increase frequency of ANC visits (every 2-3 weeks)",
+        "Conduct additional tests as indicated (e.g., ultrasound, labs)",
+        "Provide counseling and address modifiable risks",
+        "Consider early referral if new complications appear"
+      ]
+    };
+  } else { // >= 20
+    return {
+      level: "high",
+      emoji: "🔴",
+      color: "red",
+      colorClass: "bg-red-500",
+      titleAr: "خطر عالٍ",
+      titleEn: "High Risk",
+      interpretationAr: "تم تحديد عوامل خطر طبية أو توليدية أو نفسية اجتماعية متعددة أو شديدة (مثل تسمم الحمل، السكري، أمراض القلب، تاريخ توليدي سيء). خطر عالٍ من حدوث مضاعفات للأم و/أو الجنين.",
+      interpretationEn: "Multiple or severe medical, obstetric, or psychosocial risk factors identified (e.g., preeclampsia, diabetes, cardiac disease, poor obstetric history). High risk of maternal and/or fetal complications.",
+      recommendationsAr: [
+        "يتطلب رعاية توليدية متخصصة",
+        "الإحالة إلى منشأة رعاية من مستوى أعلى أو مستوى ثالث",
+        "زيارات رعاية سابقة للولادة أسبوعية أو أكثر تكراراً",
+        "مراقبة مستمرة للجنين والأم",
+        "وضع خطة ولادة وطوارئ فردية",
+        "النظر في دخول المستشفى إذا كان مؤشراً"
+      ],
+      recommendationsEn: [
+        "Requires specialist obstetric care",
+        "Refer to a higher-level or tertiary care facility",
+        "Weekly or more frequent ANC visits",
+        "Continuous fetal and maternal monitoring",
+        "Develop individualized birth and emergency plan",
+        "Consider hospitalization if indicated"
+      ]
+    };
+  }
+}
+
+// Calculate total antepartum score
+export function calculateAntepartumScore(selectedFactors: string[]): number {
+  let totalScore = 0;
+  
+  ANTEPARTUM_RISK_FACTORS.forEach(category => {
+    category.factors.forEach(factor => {
+      if (selectedFactors.includes(factor.id)) {
+        totalScore += factor.score;
+      }
+    });
+  });
+  
+  return totalScore;
+}
+
+// Get all factors as flat array
+export function getAllAntepartumFactors(): AntepartumRiskFactor[] {
+  const allFactors: AntepartumRiskFactor[] = [];
+  ANTEPARTUM_RISK_FACTORS.forEach(category => {
+    allFactors.push(...category.factors);
+  });
+  return allFactors;
+}
 export default {
   SYMPTOMS,
   SYMPTOM_CATEGORIES,
@@ -1011,6 +1412,13 @@ export default {
   CONDITIONS,
   VALIDATION_RULES,
   MEDICAL_KB_TEXT,
+  
+  // ADD THESE NEW EXPORTS:
+  ANTEPARTUM_RISK_FACTORS,
+  getAntepartumRiskLevel,
+  calculateAntepartumScore,
+  getAllAntepartumFactors,
+  
   // Helper functions
   calculateBMI,
   getBMICategory,
