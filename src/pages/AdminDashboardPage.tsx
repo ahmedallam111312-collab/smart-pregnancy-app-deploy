@@ -131,7 +131,7 @@ const getRiskCategory = (aiResponse: AIResponse | undefined): RiskCategory => {
 };
 
 // -----------------------------------------------------------------
-// Export Helpers
+// Export Helpers - UPDATED WITH ANTEPARTUM
 // -----------------------------------------------------------------
 const escapeCSV = (value: any): string => {
   if (value === null || value === undefined) return '';
@@ -151,6 +151,7 @@ const generateCSV = (records: PatientRecord[]): string => {
     'Shortness of Breath', 'Other Symptoms',
     'Systolic BP', 'Diastolic BP', 'Fasting Glucose', 'Hemoglobin',
     'Overall Risk Score', 'Preeclampsia Risk', 'GDM Risk', 'Anemia Risk',
+    'Antepartum Score', 'Antepartum Risk Level',
     'Brief Summary', 'Detailed Report', 'Known Diagnosis', 'OCR Text'
   ];
 
@@ -190,6 +191,8 @@ const generateCSV = (records: PatientRecord[]): string => {
       riskScores.preeclampsiaRisk ?? '',
       riskScores.gdmRisk ?? '',
       riskScores.anemiaRisk ?? '',
+      (riskScores as any).antepartumScore ?? 'N/A',
+      (riskScores as any).antepartumRiskLevel ?? 'N/A',
       aiResponse.brief_summary || '',
       aiResponse.detailed_report || '',
       rec.knownDiagnosis ? 'Yes' : 'No',
@@ -615,8 +618,7 @@ const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({ navigate }) => 
                                   <p><strong>الهيموجلوبين:</strong> {record.labResults?.hb || 'N/A'} g/dL</p>
                                 </div>
                               </div>
-
-                              {/* Risk Scores Detail */}
+                              {/* Risk Scores Detail - WITH ANTEPARTUM */}
                               <div>
                                 <h4 className="font-bold text-lg text-brand-pink-dark mb-3 flex items-center gap-2">
                                   <span>📈</span> تفاصيل مستوى الخطورة
@@ -628,6 +630,13 @@ const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({ navigate }) => 
                                       <p><strong>خطر تسمم الحمل:</strong> <span className="font-bold text-red-600">{(record.aiResponse.riskScores.preeclampsiaRisk * 100).toFixed(1)}%</span></p>
                                       <p><strong>خطر سكري الحمل:</strong> <span className="font-bold text-yellow-600">{(record.aiResponse.riskScores.gdmRisk * 100).toFixed(1)}%</span></p>
                                       <p><strong>خطر الأنيميا:</strong> <span className="font-bold text-blue-600">{(record.aiResponse.riskScores.anemiaRisk * 100).toFixed(1)}%</span></p>
+                                      {(record.aiResponse.riskScores as any).antepartumScore !== undefined && (
+                                        <>
+                                          <hr className="my-2" />
+                                          <p><strong>نقاط Antepartum:</strong> <span className="font-bold text-purple-600">{(record.aiResponse.riskScores as any).antepartumScore}</span></p>
+                                          <p><strong>مستوى خطر Antepartum:</strong> <span className="font-bold text-purple-600">{(record.aiResponse.riskScores as any).antepartumRiskLevel || 'N/A'}</span></p>
+                                        </>
+                                      )}
                                     </>
                                   ) : (
                                     <p className="text-gray-500">لا توجد بيانات تفصيلية للخطورة</p>
@@ -764,3 +773,6 @@ const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({ navigate }) => 
 };
 
 export default AdminDashboardPage;
+
+                            
+    
