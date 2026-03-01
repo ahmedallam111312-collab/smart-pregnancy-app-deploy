@@ -11,6 +11,8 @@ import DownloadIcon from '../components/icons/DownloadIcon';
 import Modal from '../components/Modal';
 import LoadingSpinner from '../components/LoadingSpinner';
 
+import MedicalKB from '../constants/medicalKB';
+
 // -----------------------------------------------------------------
 // Types & Constants
 // -----------------------------------------------------------------
@@ -143,6 +145,11 @@ const escapeCSV = (value: any): string => {
 };
 
 const generateCSV = (records: PatientRecord[]): string => {
+  // 1. Get all questions dynamically from your Knowledge Base
+  // By flattening the categories, we get a single array of all possible factors
+  const antepartumFactors = MedicalKB.ANTEPARTUM_RISK_FACTORS.flatMap(cat => cat.factors);
+  const antepartumHeaders = antepartumFactors.map(f => f.questionAr);
+
   const headers = [
     'ID', 'User ID', 'Timestamp', 'Name', 'Age',
     'G', 'P', 'A', 'Height (cm)', 'Pre-Pregnancy Weight (kg)', 'Current Weight (kg)',
@@ -152,6 +159,10 @@ const generateCSV = (records: PatientRecord[]): string => {
     'Systolic BP', 'Diastolic BP', 'Fasting Glucose', 'Hemoglobin',
     'Overall Risk Score', 'Preeclampsia Risk', 'GDM Risk', 'Anemia Risk',
     'Antepartum Score', 'Antepartum Risk Level',
+    
+    // 🚨 INSERT ALL DYNAMIC RISK FACTOR QUESTIONS HERE
+    ...antepartumHeaders,
+    
     'Brief Summary', 'Detailed Report', 'Known Diagnosis', 'OCR Text'
   ];
 
@@ -160,6 +171,14 @@ const generateCSV = (records: PatientRecord[]): string => {
     const labs = rec.labResults || {};
     const riskScores = rec.aiResponse?.riskScores || {} as RiskScores;
     const aiResponse = rec.aiResponse || {} as AIResponse;
+
+    // 🚨 Get the patient's saved choices (fallback to empty array if none)
+    const savedFactors = rec.antepartumRiskFactors || [];
+
+    // 🚨 Loop through all possible questions and check if the patient's array includes the ID
+    const factorAnswers = antepartumFactors.map(factor => 
+      savedFactors.includes(factor.id) ? 'نعم (Yes)' : 'لا (No)'
+    );
 
     return [
       rec.id,
@@ -193,6 +212,10 @@ const generateCSV = (records: PatientRecord[]): string => {
       riskScores.anemiaRisk ?? '',
       (riskScores as any).antepartumScore ?? 'N/A',
       (riskScores as any).antepartumRiskLevel ?? 'N/A',
+      
+      // 🚨 INSERT THE "YES/NO" ANSWERS HERE
+      ...factorAnswers,
+      
       aiResponse.brief_summary || '',
       aiResponse.detailed_report || '',
       rec.knownDiagnosis ? 'Yes' : 'No',
