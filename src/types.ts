@@ -119,6 +119,9 @@ export interface PatientRecord {
   aiResponse: AIResponse;
   knownDiagnosis?: boolean;
   
+  // 🚨 ADD THIS EXACT LINE HERE:
+  antepartumRiskFactors?: string[];
+  
   // 🚨 NEW: Security & Validation Fields
   trustScore?: number;
   reviewStatus?: ReviewStatus;
