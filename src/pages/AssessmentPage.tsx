@@ -476,6 +476,7 @@ const AssessmentPage: React.FC<{ navigate: (page: Page) => void }> = ({ navigate
   }, [formData, uploadedFile, labInputMethod, user, handleNext, lang]);
 
   // Final save handler
+  // Final save handler
   const handleFinalSave = useCallback(async () => {
     if (!user || !analysisResult) {
       setError(lang === 'ar' ? "❌ خطأ: لا يوجد تحليل للحفظ." : "❌ Error: No analysis to save");
@@ -498,6 +499,9 @@ const AssessmentPage: React.FC<{ navigate: (page: Page) => void }> = ({ navigate
         ocrText: formData.ocrText,
         aiResponse: analysisResult,
         knownDiagnosis: postAnalysisData.knownDiagnosis,
+        
+        // 🚨 ADD THIS EXACT LINE HERE:
+        antepartumRiskFactors: formData.antepartumRiskFactors,
       };
 
       await saveNewPatientRecord(newRecord);
