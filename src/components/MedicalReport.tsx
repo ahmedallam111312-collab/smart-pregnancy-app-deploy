@@ -81,6 +81,25 @@ const MedicalReport: React.FC<MedicalReportProps> = ({ record }) => {
                     {aiResponse.detailed_report}
                 </div>
             </div>
+            {/* ICD-11 Codes Section */}
+            {aiResponse.icd11_codes && aiResponse.icd11_codes.length > 0 && (
+                <div className="mb-8 p-4 bg-blue-50 rounded-lg border border-blue-200">
+                    <h2 className="text-xl font-bold border-b border-blue-300 pb-2 mb-4 flex items-center gap-2 text-blue-900">
+                        <span>🏷️</span>
+                        تصنيف الأمراض (ICD-11 WHO)
+                    </h2>
+                    <ul className="list-disc list-inside space-y-2">
+                        {aiResponse.icd11_codes.map((item, index) => (
+                            <li key={index} className="text-gray-800">
+                                <span className="font-mono font-bold text-blue-700 bg-white px-2 py-1 rounded border border-blue-300 ml-2">
+                                    {item.code}
+                                </span>
+                                {item.diagnosis}
+                            </li>
+                        ))}
+                    </ul>
+                </div>
+            )}
 
             {/* Footer / Disclaimer */}
             <div className="mt-12 pt-6 border-t border-gray-200 text-center text-xs text-gray-500">
