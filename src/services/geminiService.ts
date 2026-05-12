@@ -398,6 +398,7 @@ ${historySummary}
    - Brief summary (2-3 sentences) in ARABIC
    - Detailed report with recommendations in ARABIC, using markdown formatting (##, *, -)
    - Extracted lab values from all sources
+<<<<<<< HEAD
 5. Map each identified clinical finding (preeclampsia, gestational diabetes, anemia, or other
    conditions) to the most appropriate WHO ICD-11 MMS code. Use the standard 2024-01 release.
    Common codes for reference:
@@ -405,6 +406,8 @@ ${historySummary}
    - Gestational Diabetes: O24.4
    - Iron-deficiency Anemia in pregnancy: O99.0
    Include only codes that are clinically relevant based on the patient's data.
+=======
+>>>>>>> fd4c7fcba3e6dc1b58ea00b2951349a649b13359
 
 **OUTPUT FORMAT:**
 Return ONLY a valid JSON object with this exact structure:
@@ -422,11 +425,17 @@ Return ONLY a valid JSON object with this exact structure:
     "diastolicBp": <number or null>,
     "fastingGlucose": <number or null>,
     "hb": <number or null>
+<<<<<<< HEAD
   },
   "icd11_codes": [
     { "code": "<ICD-11 code e.g. O14.1>", "diagnosis": "<short diagnosis name in Arabic>" }
   ]
 }
+=======
+  }
+}
+
+>>>>>>> fd4c7fcba3e6dc1b58ea00b2951349a649b13359
 **CRITICAL:** 
 - Ensure risk scores are realistic and evidence-based
 - Higher scores should only be given when clear risk factors are present

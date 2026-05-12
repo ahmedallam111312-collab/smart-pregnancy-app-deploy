@@ -104,7 +104,6 @@ export interface AIResponse {
   brief_summary: string;
   detailed_report: string;
   extracted_labs: LabResults;
-  icd11_codes?: Array<{ code: string; diagnosis: string }>; // 🆕 WHO ICD-11 classification
 }
 
 export interface PatientRecord {

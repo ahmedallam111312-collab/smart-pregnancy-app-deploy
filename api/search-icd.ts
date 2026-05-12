@@ -1,6 +1,10 @@
 // api/search-icd.ts
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 
+// Fallback types if @vercel/node is not available
+type Request = VercelRequest;
+type Response = VercelResponse;
+
 const CLIENT_ID =
   process.env.ICD11_CLIENT_ID ||
   'c6716c8b-4908-4b3f-b1fb-1ffded904ad7_0a9197c2-25f7-4e87-bd82-533071573c03';
