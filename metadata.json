@@ -1,0 +1,5 @@
+{
+  "name": "Smart Pregnancy Assistant",
+  "description": "A multi-tool web application designed to assist during pregnancy. It features an AI-powered assessment wizard, a chatbot, a patient dashboard, a fetal movement counter, a weekly guide, and an admin dashboard. The entire application is presented in Arabic with a professional pink and white theme.",
+  "requestFramePermissions": []
+}
