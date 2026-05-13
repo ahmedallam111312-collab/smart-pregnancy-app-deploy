@@ -3,6 +3,7 @@
 
 import { PatientRecord, LabResults, AIResponse, RiskScores, SymptomsPayload } from '../types';
 import MedicalKB from '../constants/medicalKB';
+import { searchIcd11 } from './icdService';
 
 // -----------------------------------------------------------------
 // Configuration & Initialization
@@ -465,6 +466,34 @@ Return ONLY a valid JSON object with this exact structure:
     if (!validateRiskScores(result.riskScores)) {
       console.error('❌ Invalid risk score values:', result.riskScores);
       throw new Error('Risk scores contain invalid values');
+    }
+
+    // Validate and correct ICD-11 codes using the ICD API
+    if (result.icd11_codes && result.icd11_codes.length > 0) {
+      console.log('🔍 Validating ICD-11 codes via WHO API...');
+      const correctedCodes = await Promise.all(
+        result.icd11_codes.map(async (item) => {
+          try {
+            // Search by diagnosis text since AI might hallucinate the exact code
+            const query = item.diagnosis || item.code;
+            const searchResults = await searchIcd11(query);
+
+            if (searchResults && searchResults.length > 0) {
+              const bestMatch = searchResults[0];
+              console.log(`✅ Corrected ICD-11 for "${query}": ${item.code} -> ${bestMatch.code} (${bestMatch.title})`);
+              return {
+                code: bestMatch.code,
+                diagnosis: bestMatch.title
+              };
+            }
+          } catch (err) {
+            console.error(`⚠️ Failed to validate ICD-11 code for ${item.code}:`, err);
+          }
+          // If search fails or returns nothing, keep the AI's original code
+          return item;
+        })
+      );
+      result.icd11_codes = correctedCodes;
     }
 
     console.log('✅ Analysis completed successfully');
