@@ -483,14 +483,15 @@ Return ONLY a valid JSON object with this exact structure:
               console.log(`✅ Corrected ICD-11 for "${query}": ${item.code} -> ${bestMatch.code} (${bestMatch.title})`);
               return {
                 code: bestMatch.code,
-                diagnosis: bestMatch.title
+                diagnosis: bestMatch.title,
+                isWhoValidated: true
               };
             }
           } catch (err) {
             console.error(`⚠️ Failed to validate ICD-11 code for ${item.code}:`, err);
           }
           // If search fails or returns nothing, keep the AI's original code
-          return item;
+          return { ...item, isWhoValidated: false };
         })
       );
       result.icd11_codes = correctedCodes;

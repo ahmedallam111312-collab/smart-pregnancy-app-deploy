@@ -90,11 +90,17 @@ const MedicalReport: React.FC<MedicalReportProps> = ({ record }) => {
                     </h2>
                     <ul className="list-disc list-inside space-y-2">
                         {aiResponse.icd11_codes.map((item, index) => (
-                            <li key={index} className="text-gray-800">
-                                <span className="font-mono font-bold text-blue-700 bg-white px-2 py-1 rounded border border-blue-300 ml-2">
+                            <li key={index} className="text-gray-800 flex items-center flex-wrap gap-2">
+                                <span className="font-mono font-bold text-blue-700 bg-white px-2 py-1 rounded border border-blue-300">
                                     {item.code}
                                 </span>
-                                {item.diagnosis}
+                                <span>{item.diagnosis}</span>
+                                {item.isWhoValidated && (
+                                    <span className="text-xs bg-green-100 text-green-800 border border-green-300 px-2 py-0.5 rounded-full flex items-center gap-1">
+                                        <span>✅</span>
+                                        معتمد من منظمة الصحة العالمية (WHO)
+                                    </span>
+                                )}
                             </li>
                         ))}
                     </ul>
