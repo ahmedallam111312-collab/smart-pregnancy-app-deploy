@@ -438,28 +438,62 @@ Return ONLY a valid JSON object with this exact structure:
 
     const systemPrompt = "You are an expert Obstetrician AI Assistant specializing in high-risk pregnancy assessment. You provide evidence-based medical analysis in Arabic.";
 
-    // Call OpenRouter API with reasoning enabled
-    const response = await callOpenRouterAPI(
-      [
-        { role: 'system', content: systemPrompt },
-        { role: 'user', content: userPrompt }
-      ],
-      {
-        temperature: 0.3,
-        maxTokens: 4000,
-        responseFormat: { type: 'json_object' },
-        enableReasoning: true
+    let response = "";
+    let result: AIResponse | null = null;
+    let attempt = 0;
+    const maxAttempts = 2;
+
+    while (attempt < maxAttempts && !result) {
+      try {
+        attempt++;
+        if (attempt > 1) console.log(`🔄 Retrying API call... (Attempt ${attempt}/${maxAttempts})`);
+
+        // Call OpenRouter API with reasoning enabled
+        response = await callOpenRouterAPI(
+          [
+            { role: 'system', content: systemPrompt },
+            { role: 'user', content: userPrompt }
+          ],
+          {
+            temperature: 0.3,
+            maxTokens: 4000,
+            responseFormat: { type: 'json_object' },
+            enableReasoning: true
+          }
+        );
+
+        // Parse response
+        console.log('📊 Received NVIDIA Nemotron response from OpenRouter, parsing...');
+
+        // Clean JSON output to prevent SyntaxErrors from trailing reasoning or markdown blocks
+        let cleanedResponse = response.trim();
+        const jsonMatch = cleanedResponse.match(/\{[\s\S]*\}/);
+        if (jsonMatch) {
+          cleanedResponse = jsonMatch[0];
+        }
+
+        try {
+          result = JSON.parse(cleanedResponse) as AIResponse;
+        } catch (parseErr) {
+          console.error(`❌ JSON Parse Error on attempt ${attempt}:`, parseErr);
+          if (attempt >= maxAttempts) throw parseErr;
+          continue; // Retry
+        }
+
+        // Validate response structure
+        if (!result || !result.riskScores || !result.brief_summary || !result.detailed_report) {
+          console.error(`❌ Invalid AI response structure on attempt ${attempt}:`, result);
+          if (attempt >= maxAttempts) throw new Error('AI response missing required fields');
+          result = null; // Reset and retry
+        }
+      } catch (err) {
+        console.error(`❌ Error on attempt ${attempt}:`, err);
+        if (attempt >= maxAttempts) throw err;
       }
-    );
+    }
 
-    // Parse response
-    console.log('📊 Received NVIDIA Nemotron response from OpenRouter, parsing...');
-    const result = JSON.parse(response.trim()) as AIResponse;
-
-    // Validate response structure
-    if (!result || !result.riskScores || !result.brief_summary || !result.detailed_report) {
-      console.error('❌ Invalid AI response structure:', result);
-      throw new Error('AI response missing required fields');
+    if (!result) {
+      throw new Error('Failed to retrieve a valid response after multiple attempts.');
     }
 
     // Validate risk scores
