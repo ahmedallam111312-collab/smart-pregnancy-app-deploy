@@ -1403,28 +1403,35 @@ const AssessmentPage: React.FC<{ navigate: (page: Page) => void }> = ({ navigate
                 </div>
 
                 {/* ICD-11 Codes Section */}
-                {analysisResult.icd11_codes && analysisResult.icd11_codes.length > 0 && (
+                {analysisResult.icd11_codes && (
                   <div className="bg-blue-50 border-2 border-blue-200 rounded-xl p-6 shadow-lg">
                     <h3 className="text-2xl font-bold text-blue-900 mb-6 flex items-center gap-3 border-b-2 border-blue-200 pb-4">
                       <span className="text-3xl">🏷️</span>
                       <span>{lang === 'ar' ? 'تصنيف الأمراض (ICD-11 WHO)' : 'ICD-11 Classifications (WHO)'}</span>
                     </h3>
-                    <ul className="list-disc list-inside space-y-3">
-                      {analysisResult.icd11_codes.map((item, index) => (
-                        <li key={index} className="text-gray-800 flex items-center flex-wrap gap-2 text-lg">
-                          <span className="font-mono font-bold text-blue-700 bg-white px-3 py-1 rounded border border-blue-300">
-                            {item.code}
-                          </span>
-                          <span>{item.diagnosis}</span>
-                          {item.isWhoValidated && (
-                            <span className="text-sm bg-green-100 text-green-800 border border-green-300 px-3 py-1 rounded-full flex items-center gap-1">
-                              <span>✅</span>
-                              معتمد من منظمة الصحة العالمية (WHO)
+                    {analysisResult.icd11_codes.length > 0 ? (
+                      <ul className="list-disc list-inside space-y-3">
+                        {analysisResult.icd11_codes.map((item, index) => (
+                          <li key={index} className="text-gray-800 flex items-center flex-wrap gap-2 text-lg">
+                            <span className="font-mono font-bold text-blue-700 bg-white px-3 py-1 rounded border border-blue-300">
+                              {item.code}
                             </span>
-                          )}
-                        </li>
-                      ))}
-                    </ul>
+                            <span>{item.diagnosis}</span>
+                            {item.isWhoValidated && (
+                              <span className="text-sm bg-green-100 text-green-800 border border-green-300 px-3 py-1 rounded-full flex items-center gap-1">
+                                <span>✅</span>
+                                {lang === 'ar' ? 'معتمد من منظمة الصحة العالمية (WHO)' : 'WHO Validated'}
+                              </span>
+                            )}
+                          </li>
+                        ))}
+                      </ul>
+                    ) : (
+                      <div className="flex items-center gap-2 text-blue-700 bg-blue-100/50 p-4 rounded-lg">
+                        <span>ℹ️</span>
+                        <p>{lang === 'ar' ? 'لم يتم رصد تصنيفات مرضية خاصة تتطلب تسجيلاً في هذا التقييم.' : 'No specific pathological classifications required recording in this assessment.'}</p>
+                      </div>
+                    )}
                   </div>
                 )}
 

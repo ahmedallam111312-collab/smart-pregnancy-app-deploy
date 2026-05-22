@@ -468,8 +468,13 @@ Return ONLY a valid JSON object with this exact structure:
       throw new Error('Risk scores contain invalid values');
     }
 
+    // Ensure icd11_codes is at least an empty array if missing
+    if (!result.icd11_codes) {
+      result.icd11_codes = [];
+    }
+
     // Validate and correct ICD-11 codes using the ICD API
-    if (result.icd11_codes && result.icd11_codes.length > 0) {
+    if (result.icd11_codes.length > 0) {
       console.log('🔍 Validating ICD-11 codes via WHO API...');
       const correctedCodes = await Promise.all(
         result.icd11_codes.map(async (item) => {
